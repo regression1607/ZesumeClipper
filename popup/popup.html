@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>Zesume Clipper</title>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-dot">Z</span>
+        <div>
+          <div class="brand-name">Zesume Clipper</div>
+          <div class="brand-sub">Tailor your resume to any job</div>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button id="open-options" class="icon-btn" title="Settings" aria-label="Settings">⚙</button>
+        <button id="close-panel" class="icon-btn" title="Close panel" aria-label="Close">✕</button>
+      </div>
+    </header>
+
+    <main>
+      <!-- Auth status -->
+      <div id="auth" class="auth-row">
+        <span class="dot" id="auth-dot"></span>
+        <span id="auth-text" class="muted">Checking Zesume…</span>
+        <span id="credits-chip" class="chip hidden" title="Your Zesume credit balance">0 credits</span>
+        <button id="buy-credits" class="link hidden" type="button">Buy credits</button>
+        <button id="auth-action" class="link hidden" type="button">Sign in</button>
+      </div>
+
+      <!-- Captured job -->
+      <section class="card" id="job-card">
+        <div class="card-head">
+          <span class="label">Clipped job</span>
+          <button id="rescan" class="link" type="button">Re-scan</button>
+        </div>
+        <div id="job-empty" class="empty">
+          Open a job posting, then click <strong>Re-scan</strong>.
+        </div>
+        <div id="job-details" class="hidden">
+          <div class="job-title" id="job-title">—</div>
+          <div class="job-company muted" id="job-company"></div>
+          <div class="jd-meta">
+            <span id="jd-chars" class="chip">0 chars</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tailor -->
+      <section class="card" id="tailor-card">
+        <span class="label">Tailor a resume</span>
+        <select id="resume-select" class="select" disabled>
+          <option value="">Sign in to load resumes…</option>
+        </select>
+        <button id="tailor-btn" class="btn primary" type="button" disabled>
+          Tailor my resume to this job
+        </button>
+        <div class="row">
+          <button id="copy-jd" class="btn ghost" type="button">Copy JD</button>
+          <button id="open-zesume" class="btn ghost" type="button">Open Zesume</button>
+        </div>
+      </section>
+
+      <!-- Auto-apply (LinkedIn / Indeed) -->
+      <section class="card" id="apply-card">
+        <div class="card-head">
+          <span class="label">Auto-apply · LinkedIn / Indeed</span>
+          <span id="apply-state" class="chip hidden">idle</span>
+        </div>
+        <div id="selectors-broken" class="warn-banner hidden">
+          <strong>LinkedIn changed their page — update needed.</strong>
+          <span>Auto-apply couldn't find the Easy Apply controls, so the run was
+          stopped (nothing was submitted). This usually means LinkedIn updated
+          their layout and the extension needs a quick selector patch.</span>
+          <button id="dismiss-broken" class="btn ghost" type="button">Dismiss</button>
+        </div>
+        <label class="field">
+          <span class="field-label">Job board</span>
+          <select id="board-select" class="input">
+            <option value="linkedin">LinkedIn (Easy Apply)</option>
+            <option value="indeed">Indeed</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field-label">Keywords / criteria (optional)</span>
+          <input id="criteria" class="input" type="text" placeholder="e.g. software developer" />
+        </label>
+        <label class="field">
+          <span class="field-label">Search URL (auto-built · edit to override)</span>
+          <input id="board-url" class="input" type="url"
+                 placeholder="Auto-built from job board + keywords + location" />
+          <span id="board-loc-hint" class="muted small"></span>
+        </label>
+        <div class="row">
+          <label class="field small">
+            <span class="field-label">How many jobs</span>
+            <input id="max-jobs" class="input" type="number" min="1" max="50" value="5" />
+          </label>
+        </div>
+        <div class="row">
+          <button id="auto-apply" class="btn primary" type="button">Auto Apply</button>
+          <button id="stop-apply" class="btn ghost hidden" type="button">Stop</button>
+        </div>
+
+        <!-- Batch checkpoint -->
+        <div id="checkpoint" class="checkpoint hidden">
+          <div id="checkpoint-text" class="muted"></div>
+          <div class="row">
+            <button id="approve-held" class="btn ghost" type="button">Approve held</button>
+            <button id="skip-held" class="btn ghost" type="button">Skip held</button>
+          </div>
+        </div>
+
+        <!-- Live feed -->
+        <div id="feed" class="feed hidden"></div>
+      </section>
+
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+    </main>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

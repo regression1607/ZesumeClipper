@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="options.css" />
+    <title>Zesume Clipper — Settings</title>
+  </head>
+  <body>
+    <main>
+      <header>
+        <span class="brand-dot">Z</span>
+        <h1>Zesume Clipper settings</h1>
+      </header>
+
+      <p class="intro">
+        Clip a job description from any job posting, then tailor one of your
+        Zesume.ai resumes to it in one click. You stay signed in through your
+        normal Zesume session — no API keys are stored.
+      </p>
+
+      <section class="card">
+        <label for="apiUrl">Backend API URL</label>
+        <input id="apiUrl" type="url" placeholder="https://resume-backend-iota-ten.vercel.app" spellcheck="false" />
+        <p class="hint">
+          Your Zesume backend — serves <code>/api/*</code> and holds your login
+          session. Default: <code>https://resume-backend-iota-ten.vercel.app</code>.
+        </p>
+
+        <label for="appUrl" style="margin-top:18px">Frontend app URL</label>
+        <input id="appUrl" type="url" placeholder="https://zesume-frontend.vercel.app" spellcheck="false" />
+        <p class="hint">
+          Your Zesume web app — where tailored resumes open (<code>/r/:id</code>,
+          <code>/dashboard</code>). Default:
+          <code>https://zesume-frontend.vercel.app</code>. For local dev use
+          <code>http://localhost:5000</code> (API) and
+          <code>http://localhost:5173</code> (app).
+        </p>
+        <div class="btn-row">
+          <button id="save" class="btn primary" type="button">Save</button>
+          <button id="reset" class="btn ghost" type="button">Reset to defaults</button>
+          <span id="saved" class="saved"></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <label>Auto-apply — profile</label>
+        <p class="hint" style="margin-top:0">
+          Auto-apply on LinkedIn / Indeed fills application fields using
+          <strong>Zesume's own AI</strong> through your signed-in account — no API
+          key needed. It uses the details below to answer name/email/experience
+          questions. Everything stays in this browser.
+        </p>
+
+        <div class="grid2">
+          <div><label for="name" style="margin-top:16px">Full name</label><input id="name" type="text" class="input" /></div>
+          <div><label for="email" style="margin-top:16px">Email</label><input id="email" type="email" class="input" /></div>
+          <div><label for="phone" style="margin-top:16px">Phone</label><input id="phone" type="tel" class="input" /></div>
+          <div><label for="location" style="margin-top:16px">Location</label><input id="location" type="text" class="input" /></div>
+        </div>
+
+        <label for="links" style="margin-top:16px">LinkedIn / portfolio URLs</label>
+        <input id="links" type="text" class="input" placeholder="comma-separated" />
+
+        <label for="resumeText" style="margin-top:16px">Resume text (for answering questions)</label>
+        <textarea id="resumeText" class="input" rows="6"></textarea>
+
+        <label for="coverLetterTemplate" style="margin-top:16px">Cover letter template (use {company} and {role})</label>
+        <textarea id="coverLetterTemplate" class="input" rows="4"></textarea>
+
+        <div class="grid2">
+          <div><label for="batchSize" style="margin-top:16px">Batch size (review every N)</label><input id="batchSize" type="number" min="1" class="input" value="5" /></div>
+          <div><label for="rateLimitSeconds" style="margin-top:16px">Delay between jobs (sec)</label><input id="rateLimitSeconds" type="number" min="5" class="input" value="25" /></div>
+        </div>
+
+        <div class="btn-row">
+          <button id="save-ai" class="btn primary" type="button">Save auto-apply settings</button>
+          <span id="saved-ai" class="saved"></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <label>How it works</label>
+        <ol class="steps">
+          <li>Open a job posting (LinkedIn, Indeed, Greenhouse, Lever, or most career pages).</li>
+          <li>Click the Zesume Clipper icon — it reads the job description.</li>
+          <li>Pick a resume and hit <strong>Tailor</strong>. The tailored resume opens in Zesume.</li>
+        </ol>
+        <p class="hint">
+          Not signed in? The popup can still <strong>copy the JD</strong> and open
+          Zesume so you can paste it in.
+        </p>
+      </section>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

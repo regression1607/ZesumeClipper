@@ -1,0 +1,55 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Zesume Clipper — icon generator</title>
+    <style>
+      body { font-family: Roboto, system-ui, sans-serif; background: #f3f2ef; padding: 24px; color: rgba(0,0,0,.9); }
+      canvas { image-rendering: pixelated; border: 1px solid rgba(0,0,0,.1); margin-right: 12px; background: #fff; }
+      a { color: #0a66c2; }
+      .row { display: flex; align-items: center; gap: 16px; margin: 16px 0; }
+    </style>
+  </head>
+  <body>
+    <h1>Zesume Clipper icons</h1>
+    <p>These generate a blue “Z” mark matching Zesume.ai. Download each size, save into this
+      <code>icons/</code> folder as <code>icon16.png</code>, <code>icon48.png</code>, <code>icon128.png</code>,
+      then add an <code>"icons"</code> block to <code>manifest.json</code>.</p>
+    <div id="out"></div>
+    <script>
+      const sizes = [16, 48, 128];
+      const out = document.getElementById("out");
+      for (const size of sizes) {
+        const c = document.createElement("canvas");
+        c.width = c.height = size;
+        const ctx = c.getContext("2d");
+        const r = size * 0.22;
+        // rounded square background
+        ctx.fillStyle = "#0A66C2";
+        ctx.beginPath();
+        ctx.moveTo(r, 0);
+        ctx.arcTo(size, 0, size, size, r);
+        ctx.arcTo(size, size, 0, size, r);
+        ctx.arcTo(0, size, 0, 0, r);
+        ctx.arcTo(0, 0, size, 0, r);
+        ctx.closePath();
+        ctx.fill();
+        // "Z"
+        ctx.fillStyle = "#fff";
+        ctx.font = `700 ${Math.round(size * 0.62)}px Roboto, Arial, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("Z", size / 2, size * 0.54);
+
+        const row = document.createElement("div");
+        row.className = "row";
+        const link = document.createElement("a");
+        link.textContent = `Download icon${size}.png`;
+        link.download = `icon${size}.png`;
+        link.href = c.toDataURL("image/png");
+        row.append(c, link);
+        out.append(row);
+      }
+    </script>
+  </body>
+</html>

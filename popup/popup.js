@@ -1,0 +1,353 @@
+import { getAppUrl, ROUTES } from "../lib/config.js";
+
+const $ = (id) => document.getElementById(id);
+const send = (msg) => chrome.runtime.sendMessage(msg);
+
+let currentClip = null;
+
+function setStatus(text, kind = "") {
+  const el = $("status");
+  el.textContent = text || "";
+  el.className = `status ${kind}`;
+}
+
+// ---------- JD scraping ----------
+
+async function scan() {
+  setStatus("Reading this page…");
+  const res = await send({ type: "scrape" });
+  if (!res?.ok) {
+    $("job-details").classList.add("hidden");
+    $("job-empty").classList.remove("hidden");
+    $("job-empty").innerHTML = res?.error
+      ? escapeHtml(res.error)
+      : "No job description found on this page.";
+    currentClip = null;
+    updateTailorEnabled();
+    setStatus("");
+    return;
+  }
+  currentClip = res;
+  $("job-empty").classList.add("hidden");
+  $("job-details").classList.remove("hidden");
+  $("job-title").textContent = res.title || "(untitled role)";
+  $("job-company").textContent = res.company || "";
+  $("jd-chars").textContent = `${res.chars.toLocaleString()} chars`;
+  send({ type: "save-clip", clip: { title: res.title, company: res.company, url: res.url } });
+  updateTailorEnabled();
+  setStatus("");
+}
+
+// ---------- auth + resumes ----------
+
+async function refreshAuth() {
+  const auth = await send({ type: "check-auth" });
+  const dot = $("auth-dot");
+  const text = $("auth-text");
+  const action = $("auth-action");
+  const chip = $("credits-chip");
+  const buy = $("buy-credits");
+  if (auth?.loggedIn) {
+    dot.className = "dot on";
+    const name = auth.user?.name || auth.user?.email || "your account";
+    text.textContent = `Signed in as ${name}`;
+    action.classList.add("hidden");
+    // Show live credit balance + a top-up link.
+    const bal = auth.user?.credits?.balance ?? 0;
+    chip.textContent = `${bal} credit${bal === 1 ? "" : "s"}`;
+    chip.classList.remove("hidden");
+    buy.classList.remove("hidden");
+    await loadResumes();
+  } else {
+    dot.className = "dot off";
+    text.textContent = "Not signed in to Zesume";
+    action.textContent = "Sign in";
+    action.classList.remove("hidden");
+    chip.classList.add("hidden");
+    buy.classList.add("hidden");
+    $("resume-select").innerHTML = '<option value="">Sign in to load resumes…</option>';
+    $("resume-select").disabled = true;
+    updateTailorEnabled();
+  }
+}
+
+async function loadResumes() {
+  const res = await send({ type: "list-resumes" });
+  const sel = $("resume-select");
+  if (!res?.ok) {
+    sel.innerHTML = '<option value="">Couldn\'t load resumes</option>';
+    sel.disabled = true;
+    if (!res?.unauthorized) setStatus(res?.error || "Failed to load resumes", "err");
+    updateTailorEnabled();
+    return;
+  }
+  if (!res.resumes.length) {
+    sel.innerHTML = '<option value="">No resumes yet — create one in Zesume</option>';
+    sel.disabled = true;
+    updateTailorEnabled();
+    return;
+  }
+  sel.innerHTML = res.resumes
+    .map((r) => `<option value="${r.id}">${escapeHtml(r.title)}</option>`)
+    .join("");
+  sel.disabled = false;
+  updateTailorEnabled();
+}
+
+function updateTailorEnabled() {
+  const sel = $("resume-select");
+  const hasResume = sel && !sel.disabled && sel.value;
+  const hasJD = !!(currentClip && currentClip.ok);
+  $("tailor-btn").disabled = !(hasResume && hasJD);
+  $("copy-jd").disabled = !hasJD;
+}
+
+// ---------- actions ----------
+
+async function tailor() {
+  const resumeId = $("resume-select").value;
+  if (!resumeId || !currentClip) return;
+  $("tailor-btn").disabled = true;
+  setStatus("Tailoring your resume… this can take ~15s.");
+  const res = await send({ type: "tailor", payload: { resumeId, jd: currentClip.jd } });
+  if (res?.ok) {
+    setStatus("Done! Opened the tailored resume in Zesume.", "ok");
+  } else if (res?.unauthorized) {
+    setStatus("Session expired — sign in to Zesume and try again.", "err");
+    await refreshAuth();
+  } else if (res?.code === "limit_reached") {
+    setStatus(res.error || "AI limit reached — upgrade in Zesume.", "err");
+  } else {
+    setStatus(res?.error || "Tailoring failed.", "err");
+  }
+  updateTailorEnabled();
+}
+
+async function copyJD() {
+  if (!currentClip?.jd) return;
+  try {
+    await navigator.clipboard.writeText(currentClip.jd);
+    setStatus("Job description copied to clipboard.", "ok");
+  } catch (_) {
+    setStatus("Couldn't copy — select and copy manually.", "err");
+  }
+}
+
+function escapeHtml(s) {
+  return String(s || "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+  );
+}
+
+// ---------- wire up ----------
+
+$("rescan").addEventListener("click", scan);
+$("tailor-btn").addEventListener("click", tailor);
+$("copy-jd").addEventListener("click", copyJD);
+$("resume-select").addEventListener("change", updateTailorEnabled);
+$("open-options").addEventListener("click", () => chrome.runtime.openOptionsPage());
+$("close-panel").addEventListener("click", () => {
+  // When docked in a page as an iframe, ask the host dock to close.
+  try { window.parent.postMessage({ type: "zesume-dock-close" }, "*"); } catch (_) {}
+});
+$("open-zesume").addEventListener("click", () => send({ type: "open-app", path: ROUTES.dashboard }));
+$("buy-credits").addEventListener("click", () => send({ type: "open-app", path: ROUTES.pricing }));
+$("auth-action").addEventListener("click", async () => {
+  const appUrl = await getAppUrl();
+  chrome.tabs.create({ url: `${appUrl}/login` });
+});
+
+// ---------- auto-apply (LinkedIn / Indeed) ----------
+
+function appendFeed(text) {
+  const feed = $("feed");
+  feed.classList.remove("hidden");
+  const line = document.createElement("div");
+  const t = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  line.innerHTML = `<span class="t">[${t}]</span> ${escapeHtml(text)}`;
+  feed.appendChild(line);
+  feed.scrollTop = feed.scrollHeight;
+  while (feed.children.length > 200) feed.removeChild(feed.firstChild);
+}
+
+function setApplyRunning(running) {
+  const chip = $("apply-state");
+  chip.classList.remove("hidden");
+  chip.textContent = running ? "running" : "idle";
+  chip.className = `chip ${running ? "running" : ""}`;
+  $("auto-apply").classList.toggle("hidden", running);
+  $("stop-apply").classList.toggle("hidden", !running);
+}
+
+async function startAutoApply() {
+  const jobBoardUrl = $("board-url").value.trim();
+  const maxJobs = parseInt($("max-jobs").value, 10) || 5;
+  const keywords = $("criteria").value.trim() || currentClip?.title || "";
+  if (!jobBoardUrl) {
+    setStatus("Paste a LinkedIn / Indeed search results URL first.", "err");
+    return;
+  }
+  setApplyRunning(true);
+  $("selectors-broken").classList.add("hidden");
+  appendFeed(`Starting auto-apply (up to ${maxJobs} job${maxJobs > 1 ? "s" : ""})…`);
+  const res = await send({
+    type: "start-auto-apply",
+    payload: { criteria: { keywords }, jobBoardUrl, maxJobs },
+  });
+  if (!res?.ok) {
+    setApplyRunning(false);
+    appendFeed(`Couldn't start: ${res?.error || "unknown error"}`);
+    if (/profile|name\/email/i.test(res?.error || "")) {
+      setStatus("Add your name & email in Options to enable auto-apply.", "err");
+    } else if (/sign|log ?in|401/i.test(res?.error || "")) {
+      setStatus("Sign in to Zesume first (top of this popup).", "err");
+    }
+  }
+}
+
+function showCheckpoint(summary) {
+  const box = $("checkpoint");
+  box.classList.remove("hidden");
+  $("checkpoint-text").textContent =
+    `Batch checkpoint: ${summary.batchTotal - summary.heldCount} applied, ${summary.heldCount} held.`;
+}
+
+function hideCheckpoint() {
+  $("checkpoint").classList.add("hidden");
+}
+
+async function restoreApplyState() {
+  const { searchState, statusFeed = [], pendingCheckpoint } =
+    await chrome.storage.local.get(["searchState", "statusFeed", "pendingCheckpoint"]);
+  if (statusFeed.length) {
+    statusFeed.slice(-40).forEach((s) => appendFeed(s.text));
+  }
+  if (searchState?.running) setApplyRunning(true);
+  if (pendingCheckpoint) showCheckpoint(pendingCheckpoint);
+}
+
+// Live updates from the background engine.
+chrome.runtime.onMessage.addListener((msg) => {
+  if (!msg?.type) return;
+  if (msg.type === "status") appendFeed(msg.text);
+  else if (msg.type === "batch-checkpoint") showCheckpoint(msg.summary);
+  else if (msg.type === "selectors-broken") {
+    $("selectors-broken").classList.remove("hidden");
+    appendFeed("⚠️ LinkedIn's layout changed — auto-apply stopped. See the notice above.");
+    setApplyRunning(false);
+  } else if (msg.type === "run-ended") {
+    setApplyRunning(false);
+    appendFeed("Auto-apply run ended.");
+    refreshAuth(); // refresh the credit balance after a run
+  } else if (msg.type === "ask-user") {
+    appendFeed(`Needs your input on ${msg.questions?.length || 0} field(s) — open Zesume Clipper to answer.`);
+  }
+});
+
+$("dismiss-broken").addEventListener("click", () => {
+  $("selectors-broken").classList.add("hidden");
+});
+
+$("auto-apply").addEventListener("click", startAutoApply);
+$("stop-apply").addEventListener("click", async () => {
+  await send({ type: "stop" });
+  setApplyRunning(false);
+  appendFeed("Stopping…");
+});
+$("approve-held").addEventListener("click", async () => {
+  hideCheckpoint();
+  appendFeed("Approving held jobs…");
+  await send({ type: "approve-held-jobs" });
+});
+$("skip-held").addEventListener("click", async () => {
+  hideCheckpoint();
+  appendFeed("Skipping held jobs…");
+  await send({ type: "skip-held-jobs" });
+});
+
+// --- Persist the auto-apply inputs so they survive panel reopen/reload. ---
+const APPLY_INPUTS_KEY = "applyInputs";
+const applyInputFields = ["board-url", "criteria", "max-jobs", "board-select"];
+
+// True once the user manually edits the URL — then we stop auto-overwriting it.
+let boardUrlEdited = false;
+
+async function restoreApplyInputs() {
+  const { [APPLY_INPUTS_KEY]: saved } = await chrome.storage.local.get(APPLY_INPUTS_KEY);
+  if (!saved) return;
+  for (const id of applyInputFields) {
+    if (saved[id] !== undefined && saved[id] !== "") $(id).value = saved[id];
+  }
+  boardUrlEdited = !!saved.boardUrlEdited;
+}
+
+async function saveApplyInputs() {
+  const data = { boardUrlEdited };
+  for (const id of applyInputFields) data[id] = $(id).value;
+  await chrome.storage.local.set({ [APPLY_INPUTS_KEY]: data });
+}
+
+// Location comes from the saved auto-apply profile in Options.
+async function getSavedLocation() {
+  const { settings } = await chrome.storage.local.get("settings");
+  return (settings?.profile?.location || "").trim();
+}
+
+// Build a job-board search URL from board + keywords + saved location.
+function buildBoardUrl(board, keywords, location) {
+  const kw = (keywords || "").trim();
+  const loc = (location || "").trim();
+  if (board === "indeed") {
+    const p = new URLSearchParams();
+    if (kw) p.set("q", kw);
+    if (loc) p.set("l", loc);
+    return `https://www.indeed.com/jobs?${p.toString()}`;
+  }
+  // Default: LinkedIn Easy Apply search, jobs from the last 24h.
+  const p = new URLSearchParams();
+  if (kw) p.set("keywords", kw);
+  if (loc) p.set("location", loc);
+  p.set("f_AL", "true"); // Easy Apply only
+  p.set("f_TPR", "r86400"); // past 24 hours
+  p.set("origin", "JOB_SEARCH_PAGE_SEARCH_BUTTON");
+  p.set("refresh", "true");
+  return `https://www.linkedin.com/jobs/search/?${p.toString()}`;
+}
+
+// Rebuild the URL field from the current board + keywords + saved location,
+// unless the user has manually overridden it.
+async function syncBoardUrl({ force = false } = {}) {
+  const location = await getSavedLocation();
+  const hint = $("board-loc-hint");
+  if (hint) {
+    hint.textContent = location
+      ? `Location: ${location} (from Options)`
+      : "Tip: set your location in Options to target a city.";
+  }
+  if (boardUrlEdited && !force) return;
+  const board = $("board-select").value;
+  const keywords = $("criteria").value;
+  $("board-url").value = buildBoardUrl(board, keywords, location);
+  await saveApplyInputs();
+}
+
+// Board or keywords change → regenerate the URL (respecting manual overrides).
+$("board-select").addEventListener("change", () => syncBoardUrl());
+$("criteria").addEventListener("input", () => syncBoardUrl());
+// Typing directly in the URL field marks it as a manual override.
+$("board-url").addEventListener("input", () => {
+  boardUrlEdited = true;
+  saveApplyInputs();
+});
+
+for (const id of ["criteria", "max-jobs", "board-select"]) {
+  $(id).addEventListener("change", saveApplyInputs);
+}
+
+// Initial load.
+(async () => {
+  await Promise.all([scan(), refreshAuth(), restoreApplyState(), restoreApplyInputs()]);
+  // Fill the URL if it wasn't restored from a manual override.
+  if (!$("board-url").value || !boardUrlEdited) await syncBoardUrl();
+  else await syncBoardUrl(); // still refresh the location hint
+})();
