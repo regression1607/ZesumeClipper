@@ -201,9 +201,20 @@ async function startAutoApply() {
     return;
   }
 
+  // Check that at least 1 resume exists in Zesume
+  const resumeRes = await send({ type: "list-resumes" });
+  const resumeCount = resumeRes?.ok && Array.isArray(resumeRes.resumes) ? resumeRes.resumes.length : 0;
+  if (resumeCount === 0) {
+    $("no-resumes-banner")?.classList.remove("hidden");
+    setStatus("Upload or create at least 1 resume in Zesume first.", "err");
+    appendFeed("⚠️ No resume found in your Zesume account. Please create or upload a resume first.");
+    return;
+  }
+
   setApplyRunning(true);
   $("selectors-broken").classList.add("hidden");
   $("no-credits-banner")?.classList.add("hidden");
+  $("no-resumes-banner")?.classList.add("hidden");
   appendFeed(`Starting auto-apply (up to ${maxJobs} job${maxJobs > 1 ? "s" : ""})…`);
   const res = await send({
     type: "start-auto-apply",
@@ -215,6 +226,9 @@ async function startAutoApply() {
     if (/credit|buy/i.test(res?.error || "") || res?.code === "no_credits") {
       $("no-credits-banner")?.classList.remove("hidden");
       setStatus("You have 0 credits. Please buy credits first to apply.", "err");
+    } else if (/resume/i.test(res?.error || "") || res?.code === "no_resumes") {
+      $("no-resumes-banner")?.classList.remove("hidden");
+      setStatus("Upload or create at least 1 resume in Zesume first.", "err");
     } else if (/profile|name\/email/i.test(res?.error || "")) {
       setStatus("Add your name & email in Options to enable auto-apply.", "err");
     } else if (/sign|log ?in|401/i.test(res?.error || "")) {
@@ -274,6 +288,12 @@ $("buy-credits-banner-btn")?.addEventListener("click", () => {
 });
 $("dismiss-no-credits")?.addEventListener("click", () => {
   $("no-credits-banner")?.classList.add("hidden");
+});
+$("create-resume-btn")?.addEventListener("click", () => {
+  send({ type: "open-app", path: ROUTES.newResume });
+});
+$("dismiss-no-resumes")?.addEventListener("click", () => {
+  $("no-resumes-banner")?.classList.add("hidden");
 });
 
 $("auto-apply").addEventListener("click", startAutoApply);
