@@ -7,22 +7,21 @@
 import { getApiUrl, getAppUrl, ENDPOINTS, ROUTES } from "../lib/config.js";
 import { handleAutoApplyMessage } from "../lib/auto-apply.js";
 
-// Toggle the docked side panel when the toolbar icon is clicked.
+// Open the native side panel when the toolbar action icon is clicked.
+if (chrome.sidePanel?.setPanelBehavior) {
+  chrome.sidePanel
+    .setPanelBehavior({ openPanelOnActionClick: true })
+    .catch((e) => console.warn("setPanelBehavior error:", e));
+}
+
 chrome.action.onClicked.addListener(async (tab) => {
-  if (!tab?.id) return;
+  if (!tab?.windowId) return;
   try {
-    await chrome.tabs.sendMessage(tab.id, { type: "toggle-dock" });
-  } catch (_) {
-    // Content script not present yet (installed after page load) — inject then retry.
-    try {
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ["content-scripts/dock.js"],
-      });
-      await chrome.tabs.sendMessage(tab.id, { type: "toggle-dock" });
-    } catch (e) {
-      // Likely a restricted page (chrome://, web store) — nothing we can do.
+    if (chrome.sidePanel?.open) {
+      await chrome.sidePanel.open({ windowId: tab.windowId });
     }
+  } catch (e) {
+    console.warn("Failed to open side panel:", e);
   }
 });
 

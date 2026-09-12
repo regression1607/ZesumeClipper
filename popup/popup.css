@@ -20,14 +20,13 @@
 html, body {
   margin: 0;
   width: 100%;
-  min-height: 100%;
+  min-width: 320px;
+  min-height: 100vh;
   font-family: "Roboto", system-ui, -apple-system, sans-serif;
   color: var(--text-primary);
   background: var(--bg-base);
   font-size: 14px;
 }
-/* When shown as the toolbar popup (fallback), keep a sensible width. */
-@media (display-mode: browser) { body { width: 360px; } }
 
 .topbar {
   display: flex;

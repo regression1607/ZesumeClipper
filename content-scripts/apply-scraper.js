@@ -180,21 +180,68 @@
       return t;
     };
 
-    const cardTitle = (a) => {
+    const cardTitle = (a, card) => {
+      if (isWellfound) {
+        const titleEl = a.querySelector('[class*="styles_jobTitle"], [class*="title"], [data-test*="JobTitle"], h3, h4, strong') ||
+                        (card && card.querySelector('[class*="styles_jobTitle"], [class*="title"], [data-test*="JobTitle"], h3, h4, strong'));
+        if (titleEl && titleEl.textContent.trim()) {
+          return dedupeText(titleEl.textContent).trim().slice(0, 100);
+        }
+        if (a.firstElementChild && a.firstElementChild.textContent.trim()) {
+          const first = dedupeText(a.firstElementChild.textContent).trim();
+          if (first.length < 80 && !/in office|remote|hybrid|₹|\$|€/i.test(first)) {
+            return first;
+          }
+        }
+        let raw = dedupeText(a.textContent || "").trim();
+        raw = raw.replace(/\s*(?:In office|Remote|Hybrid|₹|\$|€|Recruiter|Posted|\d+\s*(?:day|week|month|hr)s?\s*ago)[\s\S]*/i, "").trim();
+        return (raw.split("\n")[0] || "").trim().slice(0, 120);
+      }
       const ariaSpan = a.querySelector('span[aria-hidden="true"]');
       const t = dedupeText(ariaSpan?.textContent || a.textContent || "");
       return t.split("\n")[0].trim().slice(0, 160);
     };
 
-    const cardCompany = (card) => {
+    const cardCompany = (card, a) => {
+      if (isWellfound) {
+        let current = card || a;
+        let hops = 0;
+        while (current && current !== document.body && hops < 8) {
+          const compEl = current.querySelector(
+            '[data-test="StartupHeader"] a, a[href*="/company/"], [class*="styles_startupName"], [class*="styles_company"], [data-test*="Startup"] h2, [data-test*="Startup"] h3, h2, h3'
+          );
+          if (compEl && compEl.textContent.trim()) {
+            const name = dedupeText(compEl.textContent).trim();
+            if (name.length > 1 && name.length < 70 && !/apply|applied|save|share|follow|view job/i.test(name)) {
+              return name;
+            }
+          }
+          current = current.parentElement;
+          hops++;
+        }
+      }
       const el = card.querySelector(
         '.artdeco-entity-lockup__subtitle, .job-card-container__primary-description, ' +
-        '[class*="primary-description"], .job-card-container__company-name'
+        '[class*="primary-description"], .job-card-container__company-name, ' +
+        '[data-test="StartupHeader"] a, [class*="styles_startupName"], [class*="styles_company"]'
       );
       return dedupeText(el?.textContent || "").slice(0, 120);
     };
 
-    const cardLocation = (card) => {
+    const cardLocation = (card, a) => {
+      if (isWellfound) {
+        const locEl = (card || a).querySelector(
+          '[data-test*="Location"], [class*="styles_location"], [class*="location"]'
+        );
+        if (locEl && locEl.textContent.trim()) {
+          return dedupeText(locEl.textContent).trim().slice(0, 80);
+        }
+        const text = (card || a).textContent || "";
+        const m = text.match(/\b(In office|Remote|Hybrid)\s*([A-Za-z\s,]+?)(?=₹|\$|€|Recruiter|Posted|\d+\s*(?:day|week|month)s?|•|$)/i);
+        if (m && m[2] && m[2].trim().length > 2) {
+          return m[2].trim().slice(0, 80);
+        }
+      }
       const el = card.querySelector(
         '.job-card-container__metadata-item, [class*="metadata-item"], ' +
         '.artdeco-entity-lockup__caption'
@@ -219,13 +266,99 @@
       }
     };
 
+    const isWellfound = /wellfound\.com|angel\.co/i.test(location.href);
+
     // 1) LinkedIn: target /jobs/view/ anchors directly.
     // 2) Indeed: target /viewjob or /clk anchors.
-    // 3) Generic fallback: anchors whose URL suggests a job.
+    // 3) Wellfound: target /jobs/ or /l/ anchors.
+    // 4) Generic fallback: anchors whose URL suggests a job.
+    if (isWellfound) {
+      const startupCards = Array.from(document.querySelectorAll(
+        '[data-test="StartupResult"], div[class*="styles_component__uTjje"]'
+      ));
+
+      for (const startup of startupCards) {
+        const compHeader = startup.querySelector('[data-testid="startup-header"] h2, h2, a[href*="/company/"] h2, a[href*="/company/"]');
+        const companyName = dedupeText(compHeader?.textContent || "").trim() || "Unknown Company";
+
+        const startupText = startup.textContent || "";
+        const isWellfoundApply = /apply on wellfound/i.test(startupText) || !/apply on (company's?|the) website/i.test(startupText);
+        if (!isWellfoundApply) {
+          rejectedNonEasy++;
+          continue;
+        }
+
+        const jobRows = Array.from(startup.querySelectorAll(
+          '[data-testid="job-listing-list"] > div > div, div[class*="styles_component__Ey"], a[class*="styles_jobLink"]'
+        ));
+
+        for (const row of jobRows) {
+          const a = row.tagName.toLowerCase() === "a" ? row : row.querySelector('a[href*="/jobs/"], a[href*="/l/"]');
+          if (!a || !a.href) continue;
+
+          const href = a.href;
+          // Strictly match real job URLs with digits: /jobs/4701956-... or /l/...
+          if (!/\/jobs\/\d+/i.test(href) && !/\/l\/[a-z0-9_-]+/i.test(href)) {
+            continue;
+          }
+          const cleanUrl = normalizeJobUrl(href);
+          if (seen.has(cleanUrl)) continue;
+
+          inspected++;
+
+          const rowText = row.textContent || "";
+          if (/\bapplied\b/i.test(rowText) && !/apply on wellfound/i.test(rowText)) {
+            rejectedNonEasy++;
+            continue;
+          }
+
+          const titleEl = row.querySelector('[class*="styles_title__"], [class*="titleBar"] span, h3, h4, strong') || a.firstElementChild;
+          let title = dedupeText(titleEl?.textContent || "").trim();
+          if (!title || title.length < 2) {
+            title = dedupeText(a.textContent || "").split(/\n|In office|Remote|₹|\$|€/)[0].trim();
+          }
+
+          const locEl = row.querySelector('[class*="styles_locations__"], [class*="location"]');
+          const location = dedupeText(locEl?.textContent || "").trim();
+
+          const compEl = row.querySelector('[class*="styles_compensation__"]');
+          const compensation = dedupeText(compEl?.textContent || "").trim();
+
+          seen.add(cleanUrl);
+          jobs.push({
+            title: title.slice(0, 100),
+            company: companyName.slice(0, 80),
+            location: location.slice(0, 80),
+            description: `${title} at ${companyName}. ${location} ${compensation}`.trim().slice(0, 300),
+            url: cleanUrl,
+            easyApply: true
+          });
+
+          if (jobs.length >= 40) break;
+        }
+        if (jobs.length >= 40) break;
+      }
+
+      if (jobs.length > 0 || inspected > 0) {
+        return { jobs, meta: { inspected, rejectedNonEasy, easyApplyOnly: true } };
+      }
+    }
+
+    // Generic fallback:
     const anchors = Array.from(document.querySelectorAll("a[href]")).filter((a) => {
       const h = a.href || "";
+      // Explicitly reject navigation and non-job Wellfound URLs
+      if (/\/jobs\/(home|messages|applications|starred|hidden)(\/|\?|$)/i.test(h) ||
+          /\/jobs\/?$/i.test(h) ||
+          /\/profile\/|\/company\/[^/]+$/i.test(h)) {
+        return false;
+      }
       return /\/jobs\/view\/|\/viewjob|\/clk|\/job\/|\/careers\/|\/positions?\//i.test(h) ||
+             /wellfound\.com\/(jobs|l\/|company\/[^/]+\/jobs)/i.test(h) ||
+             (isWellfound && /\/jobs\/|\/l\//i.test(h)) ||
              /job|position|opening|posting/i.test(h);
+             /\/jobs\/\d+/i.test(h) ||
+             (isWellfound && /\/l\/[a-z0-9_-]+/i.test(h));
     });
 
     for (const a of anchors) {
@@ -237,7 +370,7 @@
       // Walk up until we find a container big enough to include the whole card
       // (title + company + Easy Apply badge). LinkedIn's new UI wraps each
       // listing in an <li>, sometimes deeply nested.
-      let card = a.closest("li, article, [data-view-name], [data-occludable-job-id]");
+      let card = a.closest("li, article, [data-view-name], [data-occludable-job-id], [data-test*='JobListing'], [class*='styles_jobListing']");
       if (!card) card = a.parentElement;
       // Expand outward if container looks too small.
       let hops = 0;
@@ -253,19 +386,30 @@
 
       inspected++;
 
-      if (!EASY_APPLY_RE.test(cardText)) {
+      if (isWellfound) {
+        const isApplied = /\bapplied\b/i.test(cardText);
+        if (isApplied) {
+          rejectedNonEasy++;
+          continue;
+        }
+        const hasApply = /apply|quick apply/i.test(cardText) || /\/jobs\/|\/l\//i.test(href);
+        if (!hasApply) {
+          rejectedNonEasy++;
+          continue;
+        }
+      } else if (!EASY_APPLY_RE.test(cardText)) {
         rejectedNonEasy++;
         continue;
       }
 
-      const title = cardTitle(a);
+      const title = cardTitle(a, card);
       if (title.length < 3) continue;
 
       seen.add(url);
       jobs.push({
         title,
-        company: cardCompany(card),
-        location: cardLocation(card),
+        company: cardCompany(card, a),
+        location: cardLocation(card, a),
         description: cardText.replace(/\s+/g, " ").trim().slice(0, 400),
         url,
         easyApply: true
@@ -843,6 +987,276 @@
     return { fields, url: location.href };
   }
 
+  // -------- Wellfound (AngelList) support --------
+
+  function getWellfoundModal() {
+    const dialogs = Array.from(
+      document.querySelectorAll(
+        '[data-test="JobApplication-Modal"], div[role="dialog"][aria-modal="true"], div[role="dialog"], [data-test*="modal"], [class*="styles_modal"], [class*="styles_drawer"], [class*="styles_dialog"], form[class*="styles_form"], .ReactModal__Content'
+      )
+    ).filter(isVisible);
+
+    for (const d of dialogs) {
+      if (d.querySelector('textarea, input, [data-test*="note"], [data-test*="SubmitButton"], button[data-test*="send"], button[type="submit"]')) {
+        return d;
+      }
+    }
+    return null;
+  }
+
+  function getWellfoundLocationInput(modal) {
+    if (!modal) return null;
+    return modal.querySelector(
+      'input[data-test="Downshift--input"], input[id*="downshift"][id*="input"], [role="combobox"] input, input[placeholder*="San Francisco"]'
+    );
+  }
+
+  function extractCity(str) {
+    if (!str) return "";
+    return str.split(/[,–-]/)[0].replace(/\b(Urban|Rural|Area|Region|City)\b/gi, "").trim();
+  }
+
+  async function wellfoundOpenApply() {
+    // Check if the page says this job doesn't accept from the user's location
+    const pageText = document.body.innerText || "";
+    if (/not accepting applications from your current location/i.test(pageText)) {
+      return { ok: false, reason: "location-restricted" };
+    }
+
+    const modal = getWellfoundModal();
+    if (modal) return { ok: true, stage: "modal-already-open" };
+
+    const startTime = Date.now();
+    let applyBtn = null;
+
+    // Retry for up to 6 seconds allowing Next.js dynamic hydration
+    while (Date.now() - startTime < 6000) {
+      applyBtn = Array.from(document.querySelectorAll("button, a[role='button'], [data-test*='Apply']")).find((b) => {
+        if (b.closest("nav, header, [data-test*='LeftNav'], [data-test*='CandidateLeftNav'], [data-test*='UserMenu']")) return false;
+        if (!isVisible(b) || b.disabled) return false;
+        const t = (b.textContent || "").trim();
+        const test = b.getAttribute("data-test") || "";
+        const aria = b.getAttribute("aria-label") || "";
+        return (/^(apply|quick apply|apply now)$/i.test(t) || /apply/i.test(test) || /apply/i.test(aria)) && !/applied/i.test(t);
+      });
+
+      if (applyBtn) break;
+
+      // Check if button in MAIN content area shows already applied (exclude navigation bar!)
+      const appliedBtn = Array.from(document.querySelectorAll("main button, [data-test*='Job'] button, [class*='styles_controlButtons'] button")).find((b) => {
+        if (b.closest("nav, header, [data-test*='LeftNav'], [data-test*='CandidateLeftNav']")) return false;
+        const t = (b.textContent || "").trim();
+        return /^applied$/i.test(t) && isVisible(b);
+      });
+      if (appliedBtn) {
+        return { ok: false, reason: "already-applied" };
+      }
+
+      await new Promise((r) => setTimeout(r, 400));
+    }
+
+    if (!applyBtn) {
+      return { ok: false, reason: "no-apply-button" };
+    }
+
+    applyBtn.click();
+    const start = Date.now();
+    while (Date.now() - start < 6000) {
+      await new Promise((r) => setTimeout(r, 400));
+      const m = getWellfoundModal();
+      if (m) {
+        const mText = (m.innerText || "") + " " + (document.body.innerText || "");
+        if (/not accepting applications from your current location|timezone or relocation constraints|relocation constraints/i.test(mText)) {
+          return { ok: false, reason: "location-restricted" };
+        }
+        return { ok: true, stage: "modal-opened" };
+      }
+    }
+    return { ok: false, reason: "modal-did-not-open" };
+  }
+
+  async function wellfoundFillLocation(targetLocation) {
+    const modal = getWellfoundModal();
+    if (!modal) return { ok: false, error: "no-modal" };
+
+    const locInput = getWellfoundLocationInput(modal);
+    if (!locInput) return { ok: true, note: "no-location-input-needed" };
+
+    const hasError = !!modal.querySelector('.shared_fieldError__t2UkY, .text-dark-warning') || !locInput.value;
+    if (!hasError && locInput.value && locInput.value.length > 2) {
+      return { ok: true, note: "already-filled" };
+    }
+
+    const jobLocDisplay = modal.querySelector('[data-testid="location-display"]')?.textContent?.trim() || "";
+    let city = (targetLocation || "").trim();
+    if (!city || /^(india|united states|usa|remote)$/i.test(city)) {
+      city = extractCity(jobLocDisplay) || "Bengaluru";
+    } else {
+      city = extractCity(city) || city;
+    }
+
+    locInput.focus();
+    locInput.click();
+
+    const proto = HTMLInputElement.prototype;
+    const desc = Object.getOwnPropertyDescriptor(proto, "value");
+    if (desc && desc.set) desc.set.call(locInput, city);
+    else locInput.value = city;
+
+    locInput.dispatchEvent(new Event("input", { bubbles: true }));
+    locInput.dispatchEvent(new Event("change", { bubbles: true }));
+
+    await new Promise((r) => setTimeout(r, 600));
+
+    const options = Array.from(document.querySelectorAll(
+      '[role="option"], [id*="downshift"][id*="item"], div[class*="styles_item"], li[class*="styles_item"], [data-test*="downshift-item"]'
+    )).filter(isVisible);
+
+    if (options.length > 0) {
+      const match = options.find((o) => (o.textContent || "").toLowerCase().includes(city.toLowerCase())) || options[0];
+      match.click();
+      await new Promise((r) => setTimeout(r, 400));
+    } else {
+      locInput.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", keyCode: 40, which: 40, bubbles: true }));
+      await new Promise((r) => setTimeout(r, 200));
+      locInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 13, which: 13, bubbles: true }));
+      locInput.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", keyCode: 13, which: 13, bubbles: true }));
+      await new Promise((r) => setTimeout(r, 400));
+    }
+
+    locInput.dispatchEvent(new Event("blur", { bubbles: true }));
+
+    let attempts = 0;
+    while (attempts < 12) {
+      const ta = modal.querySelector('textarea');
+      if (ta && !ta.disabled) break;
+      await new Promise((r) => setTimeout(r, 250));
+      attempts++;
+    }
+
+    return { ok: true, cityUsed: city };
+  }
+
+  async function wellfoundFillTextarea({ selector, value }) {
+    const modal = getWellfoundModal();
+    if (!modal) return { ok: false, error: "no-modal" };
+
+    let el = selector ? document.querySelector(selector) : modal.querySelector('textarea');
+    if (!el) return { ok: false, error: "textarea-not-found" };
+
+    let waitCount = 0;
+    while (el.disabled && waitCount < 12) {
+      await new Promise((r) => setTimeout(r, 250));
+      waitCount++;
+    }
+
+    el.focus();
+    const proto = HTMLTextAreaElement.prototype;
+    const desc = Object.getOwnPropertyDescriptor(proto, "value");
+    if (desc && desc.set) desc.set.call(el, String(value || ""));
+    else el.value = String(value || "");
+
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    el.dispatchEvent(new Event("blur", { bubbles: true }));
+
+    return { ok: true };
+  }
+
+  function wellfoundModalState() {
+    const modal = getWellfoundModal();
+    const fullText = (modal ? modal.innerText : "") + " " + (document.body ? document.body.innerText : "");
+    const locationRestricted = /not accepting applications from your current location|timezone or relocation constraints|relocation constraints/i.test(fullText);
+
+    if (!modal) {
+      const text = document.body.innerText || "";
+      const confirmed = /(your application has been sent|application sent|successfully applied)/i.test(text);
+      return { inModal: false, confirmed, locationRestricted };
+    }
+
+    const locInput = getWellfoundLocationInput(modal);
+    const hasLocationError = !!modal.querySelector('.shared_fieldError__t2UkY, .text-dark-warning') ||
+                             (!!locInput && !locInput.value);
+    const jobLocation = modal.querySelector('[data-testid="location-display"]')?.textContent?.trim() || "";
+
+    const textareas = Array.from(modal.querySelectorAll('textarea')).filter(isVisible).map((t) => {
+      const label = labelFor(t) || t.placeholder || "What interests you about working for this company?";
+      return {
+        selector: cssPath(t),
+        label,
+        disabled: !!t.disabled,
+        value: t.value || ""
+      };
+    });
+
+    const allFields = scrapeFieldsIn(modal);
+    const fields = allFields.filter((f) => !/downshift/i.test(f.selector) && f.type !== "hidden");
+
+    const sendBtn = Array.from(modal.querySelectorAll(
+      'button[data-test="JobApplicationModal--SubmitButton"], button[data-test*="SubmitButton"], button[data-test*="send"], button[type="submit"], button'
+    )).find((b) => {
+      if (!isVisible(b)) return false;
+      const t = (b.textContent || b.value || "").trim();
+      const test = b.getAttribute("data-test") || "";
+      return test === "JobApplicationModal--SubmitButton" ||
+             /send application|submit application|apply now|^send$|^apply$/i.test(t) ||
+             /send/i.test(test);
+    });
+
+    return {
+      inModal: true,
+      locationRestricted,
+      hasLocationError,
+      hasLocationInput: !!locInput,
+      jobLocation,
+      textareas,
+      fields,
+      sendButtonSelector: sendBtn ? cssPath(sendBtn) : null,
+      isSendDisabled: sendBtn ? !!sendBtn.disabled : true,
+      primaryButtonText: sendBtn ? (sendBtn.textContent || "").trim() : "Send application"
+    };
+  }
+
+  async function wellfoundClickSend() {
+    const modal = getWellfoundModal();
+    if (!modal) return { ok: false, error: "no-modal" };
+
+    let btn = modal.querySelector(
+      'button[data-test="JobApplicationModal--SubmitButton"], button[data-test*="SubmitButton"], button[data-test*="send"], button[type="submit"]'
+    );
+    if (!btn) {
+      btn = Array.from(modal.querySelectorAll("button")).find((b) => {
+        const t = (b.textContent || "").trim();
+        return isVisible(b) && /send application|submit application|apply now/i.test(t);
+      });
+    }
+
+    if (!btn) return { ok: false, error: "submit-button-not-found" };
+
+    let waitAttempts = 0;
+    while (btn.disabled && waitAttempts < 15) {
+      await new Promise((r) => setTimeout(r, 300));
+      waitAttempts++;
+    }
+
+    if (btn.disabled) {
+      const mText = (modal.innerText || "") + " " + (document.body.innerText || "");
+      if (/not accepting applications from your current location|timezone or relocation constraints|relocation constraints/i.test(mText)) {
+        return { ok: false, error: "location-restricted", reason: "location-restricted" };
+      }
+      return { ok: false, error: "submit-button-still-disabled" };
+    }
+
+    btn.click();
+    await new Promise((r) => setTimeout(r, 2000));
+
+    const stillOpen = getWellfoundModal();
+    const pageText = document.body.innerText || "";
+    const confirmed = !stillOpen || /(your application has been sent|application sent|successfully applied|applied)/i.test(pageText);
+
+    return { ok: true, confirmed };
+  }
+
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (!msg || typeof msg !== "object") return;
     (async () => {
@@ -857,6 +1271,16 @@
           sendResponse(linkedinModalState());
         } else if (msg.type === "linkedinClickPrimary") {
           sendResponse(await linkedinClickPrimary());
+        } else if (msg.type === "wellfoundOpenApply") {
+          sendResponse(await wellfoundOpenApply());
+        } else if (msg.type === "wellfoundModalState") {
+          sendResponse(wellfoundModalState());
+        } else if (msg.type === "wellfoundFillLocation") {
+          sendResponse(await wellfoundFillLocation(msg.location));
+        } else if (msg.type === "wellfoundFillTextarea") {
+          sendResponse(await wellfoundFillTextarea(msg));
+        } else if (msg.type === "wellfoundClickSend") {
+          sendResponse(await wellfoundClickSend());
         }
       } catch (e) {
         sendResponse({ error: e.message });

@@ -89,6 +89,11 @@
     // Lever
     ".posting-page .section-wrapper",
     ".posting-requirements",
+    // Wellfound (AngelList)
+    '[data-test="JobDescription"]',
+    '[data-component="JobDescription"]',
+    '[class*="styles_jobDescription"]',
+    '[class*="styles_description"]',
     // Workday / generic ATS
     '[data-automation-id="jobPostingDescription"]',
     // Generic
@@ -99,6 +104,12 @@
   ];
 
   const TITLE_SELECTORS = [
+    // Wellfound
+    '[data-test="JobListingHeader"] h1',
+    '[class*="styles_header"] h1',
+    '[class*="styles_title"] h1',
+    '[class*="styles_jobTitle"]',
+    // LinkedIn
     ".job-details-jobs-unified-top-card__job-title",
     ".jobs-unified-top-card__job-title",
     ".topcard__title",
@@ -109,6 +120,12 @@
   ];
 
   const COMPANY_SELECTORS = [
+    // Wellfound
+    '[data-test="StartupHeader"] a',
+    '[class*="styles_startupName"]',
+    '[class*="styles_company"] a',
+    '[class*="styles_companyName"]',
+    // LinkedIn
     ".job-details-jobs-unified-top-card__company-name",
     ".jobs-unified-top-card__company-name",
     ".topcard__org-name-link",

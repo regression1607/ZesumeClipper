@@ -67,21 +67,30 @@
       <!-- Auto-apply (LinkedIn / Indeed) -->
       <section class="card" id="apply-card">
         <div class="card-head">
-          <span class="label">Auto-apply · LinkedIn / Indeed</span>
+          <span class="label">Auto-apply · LinkedIn / Indeed / Wellfound</span>
           <span id="apply-state" class="chip hidden">idle</span>
         </div>
         <div id="selectors-broken" class="warn-banner hidden">
-          <strong>LinkedIn changed their page — update needed.</strong>
-          <span>Auto-apply couldn't find the Easy Apply controls, so the run was
-          stopped (nothing was submitted). This usually means LinkedIn updated
+          <strong>Job board changed their page — update needed.</strong>
+          <span>Auto-apply couldn't find the apply controls, so the run was
+          stopped (nothing was submitted). This usually means the job board updated
           their layout and the extension needs a quick selector patch.</span>
           <button id="dismiss-broken" class="btn ghost" type="button">Dismiss</button>
+        </div>
+        <div id="no-credits-banner" class="warn-banner hidden">
+          <strong>No credits remaining.</strong>
+          <span>You have 0 credits. Auto-apply uses AI to rank jobs and answer questions. Please buy credits first to apply.</span>
+          <div class="row" style="margin-top: 6px; gap: 8px;">
+            <button id="buy-credits-banner-btn" class="btn primary" type="button" style="padding: 6px 14px; font-size: 12.5px;">Buy Credits</button>
+            <button id="dismiss-no-credits" class="btn ghost" type="button" style="padding: 6px 14px; font-size: 12.5px;">Dismiss</button>
+          </div>
         </div>
         <label class="field">
           <span class="field-label">Job board</span>
           <select id="board-select" class="input">
             <option value="linkedin">LinkedIn (Easy Apply)</option>
             <option value="indeed">Indeed</option>
+            <option value="wellfound">Wellfound (AngelList)</option>
           </select>
         </label>
         <label class="field">

@@ -151,6 +151,7 @@
         setNativeValue(el, String(value ?? ""));
         fire(el, "input");
         fire(el, "change");
+        fire(el, "blur");
       }
       return { selector, ok: true };
     } catch (e) {

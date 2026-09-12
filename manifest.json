@@ -3,7 +3,7 @@
   "name": "Zesume Clipper",
   "version": "0.1.0",
   "description": "Clip any job description and tailor your Zesume.ai resume to it in one click.",
-  "permissions": ["storage", "activeTab", "scripting", "tabs"],
+  "permissions": ["storage", "activeTab", "scripting", "tabs", "sidePanel"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background/background.js",
@@ -27,7 +27,6 @@
     {
       "matches": ["<all_urls>"],
       "js": [
-        "content-scripts/dock.js",
         "content-scripts/jd-scraper.js",
         "content-scripts/apply-scraper.js",
         "content-scripts/apply-filler.js",
@@ -36,10 +35,7 @@
       "run_at": "document_idle"
     }
   ],
-  "web_accessible_resources": [
-    {
-      "resources": ["popup/popup.html"],
-      "matches": ["<all_urls>"]
-    }
-  ]
+  "side_panel": {
+    "default_path": "popup/popup.html"
+  }
 }

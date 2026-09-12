@@ -6,7 +6,12 @@
   function findSubmitButton() {
     // Prefer explicit submit buttons in visible forms
     const explicit = document.querySelector('form button[type="submit"], form input[type="submit"]');
-    if (explicit) return explicit;
+    if (explicit && !explicit.disabled) return explicit;
+
+    const dataTestBtn = document.querySelector(
+      'button[data-test*="send"], button[data-test*="submit"], button[data-test*="apply"]'
+    );
+    if (dataTestBtn && !dataTestBtn.disabled) return dataTestBtn;
 
     const buttons = Array.from(document.querySelectorAll('button, input[type="button"], a[role="button"]'));
     const textMatches = /^(submit|apply|send application|send|submit application|apply now)$/i;
@@ -27,7 +32,7 @@
 
   async function waitForSuccess(timeoutMs = 8000) {
     const startUrl = location.href;
-    const successRe = /(thank you|application (?:submitted|received|sent)|successfully applied|we('| have)? received|application complete)/i;
+    const successRe = /(thank you|application (?:submitted|received|sent)|successfully applied|your application has been sent|we('| have)? received|application complete)/i;
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
       if (location.href !== startUrl) return { confirmed: true, note: "url-change" };

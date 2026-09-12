@@ -147,8 +147,7 @@ $("copy-jd").addEventListener("click", copyJD);
 $("resume-select").addEventListener("change", updateTailorEnabled);
 $("open-options").addEventListener("click", () => chrome.runtime.openOptionsPage());
 $("close-panel").addEventListener("click", () => {
-  // When docked in a page as an iframe, ask the host dock to close.
-  try { window.parent.postMessage({ type: "zesume-dock-close" }, "*"); } catch (_) {}
+  window.close();
 });
 $("open-zesume").addEventListener("click", () => send({ type: "open-app", path: ROUTES.dashboard }));
 $("buy-credits").addEventListener("click", () => send({ type: "open-app", path: ROUTES.pricing }));
@@ -184,11 +183,27 @@ async function startAutoApply() {
   const maxJobs = parseInt($("max-jobs").value, 10) || 5;
   const keywords = $("criteria").value.trim() || currentClip?.title || "";
   if (!jobBoardUrl) {
-    setStatus("Paste a LinkedIn / Indeed search results URL first.", "err");
+    setStatus("Paste a LinkedIn / Indeed / Wellfound search results URL first.", "err");
     return;
   }
+
+  // Check auth & credit balance before starting
+  const auth = await send({ type: "check-auth" });
+  if (!auth?.loggedIn) {
+    setStatus("Sign in to Zesume first (top of this popup).", "err");
+    return;
+  }
+  const balance = auth.user?.credits?.balance ?? 0;
+  if (balance <= 0) {
+    $("no-credits-banner")?.classList.remove("hidden");
+    setStatus("You have 0 credits. Please buy credits first to apply.", "err");
+    appendFeed("⚠️ You have 0 credits. Please buy credits first to use Auto Apply.");
+    return;
+  }
+
   setApplyRunning(true);
   $("selectors-broken").classList.add("hidden");
+  $("no-credits-banner")?.classList.add("hidden");
   appendFeed(`Starting auto-apply (up to ${maxJobs} job${maxJobs > 1 ? "s" : ""})…`);
   const res = await send({
     type: "start-auto-apply",
@@ -197,7 +212,10 @@ async function startAutoApply() {
   if (!res?.ok) {
     setApplyRunning(false);
     appendFeed(`Couldn't start: ${res?.error || "unknown error"}`);
-    if (/profile|name\/email/i.test(res?.error || "")) {
+    if (/credit|buy/i.test(res?.error || "") || res?.code === "no_credits") {
+      $("no-credits-banner")?.classList.remove("hidden");
+      setStatus("You have 0 credits. Please buy credits first to apply.", "err");
+    } else if (/profile|name\/email/i.test(res?.error || "")) {
       setStatus("Add your name & email in Options to enable auto-apply.", "err");
     } else if (/sign|log ?in|401/i.test(res?.error || "")) {
       setStatus("Sign in to Zesume first (top of this popup).", "err");
@@ -231,7 +249,11 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (!msg?.type) return;
   if (msg.type === "status") appendFeed(msg.text);
   else if (msg.type === "batch-checkpoint") showCheckpoint(msg.summary);
-  else if (msg.type === "selectors-broken") {
+  else if (msg.type === "no-credits") {
+    $("no-credits-banner")?.classList.remove("hidden");
+    appendFeed("⚠️ Out of credits. Please buy credits to continue auto-applying.");
+    setApplyRunning(false);
+  } else if (msg.type === "selectors-broken") {
     $("selectors-broken").classList.remove("hidden");
     appendFeed("⚠️ LinkedIn's layout changed — auto-apply stopped. See the notice above.");
     setApplyRunning(false);
@@ -246,6 +268,12 @@ chrome.runtime.onMessage.addListener((msg) => {
 
 $("dismiss-broken").addEventListener("click", () => {
   $("selectors-broken").classList.add("hidden");
+});
+$("buy-credits-banner-btn")?.addEventListener("click", () => {
+  send({ type: "open-app", path: ROUTES.pricing });
+});
+$("dismiss-no-credits")?.addEventListener("click", () => {
+  $("no-credits-banner")?.classList.add("hidden");
 });
 
 $("auto-apply").addEventListener("click", startAutoApply);
@@ -302,6 +330,12 @@ function buildBoardUrl(board, keywords, location) {
     if (kw) p.set("q", kw);
     if (loc) p.set("l", loc);
     return `https://www.indeed.com/jobs?${p.toString()}`;
+  }
+  if (board === "wellfound") {
+    const p = new URLSearchParams();
+    if (kw) p.set("q", kw);
+    if (loc) p.set("location", loc);
+    return `https://wellfound.com/jobs?${p.toString()}`;
   }
   // Default: LinkedIn Easy Apply search, jobs from the last 24h.
   const p = new URLSearchParams();
