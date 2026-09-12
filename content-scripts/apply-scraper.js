@@ -424,8 +424,10 @@
   function getAnyVisibleDialog() {
     return Array.from(
       document.querySelectorAll(
-        '[role="dialog"], .jobs-easy-apply-modal, .artdeco-modal, ' +
-        '[data-test-modal], [data-test-modal-id], .artdeco-modal--layer-default'
+        '[role="dialog"], [aria-modal="true"], dialog, ' +
+        '.jobs-easy-apply-modal, .artdeco-modal, ' +
+        '[data-test-modal], [data-test-modal-id], .artdeco-modal--layer-default, ' +
+        '#artdeco-modal-outlet > div, div[data-view-name*="modal"], div[class*="easy-apply-modal"]'
       )
     ).filter(isVisible);
   }
@@ -481,50 +483,56 @@
   // brief loading state as "the flow closed".
   function getEasyApplyFooterButton() {
     const candidates = Array.from(document.querySelectorAll(APPLY_FOOTER_SELECTOR));
-    return candidates.find((b) => isVisible(b)) || null;
+    const bySelector = candidates.find((b) => isVisible(b));
+    if (bySelector) return bySelector;
+
+    // Fallback for new LinkedIn UI where data-view-name is omitted on hashed classes:
+    const allButtons = Array.from(document.querySelectorAll("button")).filter(isVisible);
+    const byText = allButtons.find((b) => {
+      const t = (b.textContent || "").trim();
+      const aria = (b.getAttribute("aria-label") || "").trim();
+      if (/easy apply/i.test(aria) || /^easy apply/i.test(t)) return false;
+      if (/dismiss|close|cancel|discard|skip|back|previous|jump menu|more options/i.test(t) || /dismiss|close|more options/i.test(aria)) return false;
+      return /^(next|continue|review|submit application|review your application|submit)$/i.test(t) ||
+             /submit application|review your application|continue to next/i.test(aria);
+    });
+    return byText || null;
   }
 
   function getLinkedInApplyRoot() {
-    // Modern LinkedIn renders Easy Apply either as an overlay or inline on the
-    // page — frequently with NO role="dialog" / .artdeco-modal wrapper (class
-    // names are hashed). The only reliable signal is the footer button's stable
-    // data-view-name. Climb from it to the nearest ancestor holding the form.
+    // 1. Prioritize the container of the ACTIVE Easy Apply footer button
     const footer = getEasyApplyFooterButton();
     if (footer) {
-      let node = footer.parentElement;
-      let withFields = null;
-      let hops = 0;
-      while (node && node !== document.body && hops < 20) {
-        const cls = (node.className || "").toString();
-        if (node.getAttribute("role") === "dialog" || /modal/i.test(cls)) {
-          return node;
+      const modalParent = footer.closest(
+        '.artdeco-modal, [role="dialog"], .jobs-easy-apply-modal, form, [data-view-name*="modal"], [aria-modal="true"]'
+      );
+      if (modalParent) return modalParent;
+    }
+
+    // 2. Check any open artdeco modal or dialog in the DOM directly
+    const candidates = Array.from(
+      document.querySelectorAll(
+        '.jobs-easy-apply-modal, [data-test-modal-id="easy-apply-modal"], [data-test-modal], ' +
+        '#artdeco-modal-outlet .artdeco-modal, .artdeco-modal, [role="dialog"], [aria-modal="true"]'
+      )
+    );
+    for (const d of candidates) {
+      if ((isVisible(d) || d.offsetWidth > 0 || d.offsetHeight > 0) && !d.closest('[aria-hidden="true"]')) {
+        if (
+          d.querySelector("input, textarea, select") ||
+          d.querySelector(APPLY_FOOTER_SELECTOR) ||
+          isEasyApplyModal(d)
+        ) {
+          return d;
         }
-        // Remember the closest ancestor that actually contains form inputs.
-        if (!withFields && node.querySelector("input, textarea, select")) {
-          withFields = node;
-        }
-        node = node.parentElement;
-        hops++;
       }
-      if (withFields) return withFields;
-      // Apply flow is open but this step may have no inputs yet (e.g. a resume
-      // review step that only has a "Next" button): return a stable ancestor so
-      // the orchestrator can still click through.
-      return footer.closest("form, section, div") || footer.parentElement || document.body;
     }
 
-    // Legacy dialog detection (older LinkedIn UI).
-    const dialogs = getAnyVisibleDialog();
-    for (const d of dialogs) {
-      if (isEasyApplyModal(d)) return d;
-      if (d.querySelector("input, textarea, select")) return d;
-    }
-
-    // Full-page flow at /jobs/view/{id}/apply/.
+    // 3. Check for full-page flow at /jobs/view/{id}/apply/
     if (/\/jobs\/view\/\d+\/apply/i.test(location.pathname)) {
       if (document.body.querySelector("input, textarea, select")) return document.body;
     }
-    return null;
+    return footer ? footer.closest("div") || document.body : null;
   }
 
   function getLinkedInModal() {
@@ -555,32 +563,39 @@
   }
 
   function findEasyApplyOpenButton() {
-    // Preferred: LinkedIn's dedicated apply button selectors.
-    const preferred = Array.from(
-      document.querySelectorAll(
-        'button.jobs-apply-button, ' +
-        'button[data-live-test-job-apply-button], ' +
-        'button[aria-label^="Easy Apply"], ' +
-        'button[aria-label*="Easy Apply to"]'
-      )
-    ).filter((b) => isVisible(b) && !b.disabled);
-    for (const b of preferred) {
-      const aria = (b.getAttribute("aria-label") || "").trim();
-      const txt = (b.textContent || "").trim();
-      if (/company (?:website|site)/i.test(aria) || /company (?:website|site)/i.test(txt)) continue;
-      return b;
+    // 1. High-priority dedicated LinkedIn Easy Apply selectors
+    const preferredSelectors = [
+      'button.jobs-apply-button',
+      'button[data-job-id]',
+      'button[data-live-test-job-apply-button]',
+      'button[data-view-name="job-apply-button"]',
+      'button[aria-label*="Easy Apply"]',
+      '.jobs-s-apply button',
+      '.jobs-apply-button--top-card button',
+      'div[class*="jobs-apply-button"] button',
+      'button[class*="jobs-apply-button"]'
+    ];
+
+    for (const sel of preferredSelectors) {
+      const btns = Array.from(document.querySelectorAll(sel)).filter((b) => isVisible(b) && !b.disabled);
+      for (const b of btns) {
+        const aria = (b.getAttribute("aria-label") || "").trim();
+        const txt = (b.textContent || "").trim();
+        if (/company (?:website|site)/i.test(aria) || /company (?:website|site)/i.test(txt)) continue;
+        return b;
+      }
     }
-    // Fallback: any button whose text starts with "Easy Apply" and is big enough.
-    const buttons = Array.from(document.querySelectorAll("button"));
+
+    // 2. Fallback: Any button matching Easy Apply in text or aria-label
+    const allButtons = Array.from(document.querySelectorAll('button, a[role="button"], div[role="button"]'));
     return (
-      buttons.find((b) => {
+      allButtons.find((b) => {
+        if (!isVisible(b) || b.disabled) return false;
         const t = (b.textContent || "").trim();
         const aria = (b.getAttribute("aria-label") || "").trim();
-        const easy = /^easy apply/i.test(t) || /easy apply/i.test(aria);
+        const easy = /easy apply/i.test(t) || /easy apply/i.test(aria);
         const external = /company (?:website|site)/i.test(t) || /company (?:website|site)/i.test(aria);
-        const rect = b.getBoundingClientRect();
-        const bigEnough = rect.width > 60 && rect.height > 20;
-        return easy && !external && bigEnough && isVisible(b) && !b.disabled;
+        return easy && !external;
       }) || null
     );
   }
@@ -675,7 +690,26 @@
 
   async function linkedinOpenEasyApply() {
     if (getLinkedInModal()) return { ok: true, alreadyOpen: true };
-    const btn = findEasyApplyOpenButton();
+
+    // Wait up to 6s for page to hydrate and button to appear
+    const startFind = Date.now();
+    let btn = null;
+    while (Date.now() - startFind < 6000) {
+      // Check if the page already shows "Applied"
+      const alreadyApplied = Array.from(document.querySelectorAll("button, span, div, a")).some((el) => {
+        if (!isVisible(el)) return false;
+        const t = (el.textContent || "").trim();
+        return /^applied$/i.test(t) || /application submitted/i.test(t);
+      });
+      if (alreadyApplied) {
+        return { ok: false, reason: "already-applied" };
+      }
+
+      btn = findEasyApplyOpenButton();
+      if (btn) break;
+      await new Promise((r) => setTimeout(r, 400));
+    }
+
     if (!btn) {
       return {
         ok: false,
@@ -689,18 +723,28 @@
 
     const startHost = location.hostname;
     let clicks = 0;
-    try { btn.scrollIntoView({ block: "center" }); } catch (_) {}
+    try { btn.scrollIntoView({ block: "center", behavior: "instant" }); } catch (_) {}
     await new Promise((r) => setTimeout(r, 300));
+    try { btn.focus(); } catch (_) {}
+
+    // Dispatch full pointer and mouse event sequence for React synthetic listeners
+    const evOpts = { bubbles: true, cancelable: true, view: window, composed: true };
+    btn.dispatchEvent(new PointerEvent("pointerdown", evOpts));
+    btn.dispatchEvent(new MouseEvent("mousedown", evOpts));
+    btn.dispatchEvent(new PointerEvent("pointerup", evOpts));
+    btn.dispatchEvent(new MouseEvent("mouseup", evOpts));
     btn.click();
+    const innerSpan = btn.querySelector("span");
+    if (innerSpan) {
+      try { innerSpan.click(); } catch (_) {}
+    }
     clicks++;
 
     const start = Date.now();
     let safetyDismissed = false;
-    while (Date.now() - start < 25000) {
-      await new Promise((r) => setTimeout(r, 300));
+    while (Date.now() - start < 15000) {
+      await new Promise((r) => setTimeout(r, 350));
 
-      // If clicking the apply button navigated us off LinkedIn, it's an
-      // external ATS redirect — not automatable here.
       if (location.hostname && location.hostname !== startHost &&
           !/(^|\.)linkedin\.com$/i.test(location.hostname)) {
         return { ok: false, reason: "external-redirect", url: location.href };
@@ -709,12 +753,11 @@
       if (!safetyDismissed) {
         safetyDismissed = await dismissNonFormDialogs();
       }
-      // Either the classic modal appeared OR we navigated to /apply/ full-page flow.
       if (getLinkedInApplyRoot()) return { ok: true, safetyDismissed, url: location.href };
 
-      // Re-click once mid-way if nothing happened (first click sometimes gets
-      // swallowed while the job card is still hydrating).
-      if (clicks < 2 && Date.now() - start > 6000) {
+      // Re-click after 3.5s and 7s if modal hasn't appeared
+      const elapsed = Date.now() - start;
+      if ((elapsed > 3500 && clicks === 1) || (elapsed > 7000 && clicks === 2)) {
         const again = findEasyApplyOpenButton();
         if (again) {
           try { again.click(); } catch (_) {}

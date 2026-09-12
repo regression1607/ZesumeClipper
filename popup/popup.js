@@ -248,6 +248,73 @@ function hideCheckpoint() {
   $("checkpoint").classList.add("hidden");
 }
 
+
+function renderQuestions(questions, jobContext) {
+  const modal = $("questions-modal");
+  if (!modal) return;
+  modal.classList.remove("hidden");
+
+  $("questions-job-company").textContent = jobContext?.company || "Job Application";
+  $("questions-job-subtitle").textContent =
+    `Required by ${jobContext?.company || "employer"} · Step ${jobContext?.step || 1}`;
+
+  const list = $("questions-list");
+  list.innerHTML = "";
+
+  (questions || []).forEach((q, idx) => {
+    const item = document.createElement("div");
+    item.className = "question-item";
+
+    const lbl = document.createElement("label");
+    lbl.textContent = q.label || `Field ${idx + 1}`;
+    item.appendChild(lbl);
+
+    let inputEl;
+    if (Array.isArray(q.options) && q.options.length > 0) {
+      inputEl = document.createElement("select");
+      inputEl.className = "input";
+      const optDefault = document.createElement("option");
+      optDefault.value = "";
+      optDefault.textContent = "-- Select an option --";
+      inputEl.appendChild(optDefault);
+
+      q.options.forEach((opt) => {
+        const o = document.createElement("option");
+        o.value = opt;
+        o.textContent = opt;
+        if (q.suggested && String(q.suggested).toLowerCase() === String(opt).toLowerCase()) {
+          o.selected = true;
+        }
+        inputEl.appendChild(o);
+      });
+    } else if (q.type === "textarea") {
+      inputEl = document.createElement("textarea");
+      inputEl.rows = 3;
+      inputEl.value = q.suggested || "";
+    } else if (q.type === "number") {
+      inputEl = document.createElement("input");
+      inputEl.type = "number";
+      inputEl.value = q.suggested || "";
+    } else {
+      inputEl = document.createElement("input");
+      inputEl.type = "text";
+      inputEl.value = q.suggested || "";
+    }
+
+    inputEl.setAttribute("data-selector", q.selector);
+    inputEl.setAttribute("data-label", q.label || q.selector);
+    item.appendChild(inputEl);
+    list.appendChild(item);
+  });
+
+  const firstInput = list.querySelector("input, select, textarea");
+  if (firstInput) setTimeout(() => firstInput.focus(), 150);
+}
+
+function hideQuestions() {
+  $("questions-modal")?.classList.add("hidden");
+}
+
 async function restoreApplyState() {
   const { searchState, statusFeed = [], pendingCheckpoint } =
     await chrome.storage.local.get(["searchState", "statusFeed", "pendingCheckpoint"]);
@@ -256,6 +323,11 @@ async function restoreApplyState() {
   }
   if (searchState?.running) setApplyRunning(true);
   if (pendingCheckpoint) showCheckpoint(pendingCheckpoint);
+
+  const { pendingQuestions } = await chrome.storage.local.get("pendingQuestions");
+  if (pendingQuestions && Array.isArray(pendingQuestions.questions) && pendingQuestions.questions.length > 0) {
+    renderQuestions(pendingQuestions.questions, pendingQuestions.jobContext);
+  }
 }
 
 // Live updates from the background engine.
@@ -272,11 +344,13 @@ chrome.runtime.onMessage.addListener((msg) => {
     appendFeed("⚠️ LinkedIn's layout changed — auto-apply stopped. See the notice above.");
     setApplyRunning(false);
   } else if (msg.type === "run-ended") {
+    hideQuestions();
     setApplyRunning(false);
     appendFeed("Auto-apply run ended.");
     refreshAuth(); // refresh the credit balance after a run
   } else if (msg.type === "ask-user") {
-    appendFeed(`Needs your input on ${msg.questions?.length || 0} field(s) — open Zesume Clipper to answer.`);
+    renderQuestions(msg.questions, msg.jobContext);
+    appendFeed(`Needs your input on ${msg.questions?.length || 0} field(s) for ${msg.jobContext?.company || "job"}.`);
   }
 });
 
@@ -294,6 +368,42 @@ $("create-resume-btn")?.addEventListener("click", () => {
 });
 $("dismiss-no-resumes")?.addEventListener("click", () => {
   $("no-resumes-banner")?.classList.add("hidden");
+});
+
+$("submit-user-answers")?.addEventListener("click", async () => {
+  const modal = $("questions-modal");
+  const inputs = modal.querySelectorAll("[data-selector]");
+  const answers = {};
+  const remember = {};
+  const shouldRemember = $("remember-answers-check")?.checked ?? true;
+
+  inputs.forEach((inp) => {
+    const selector = inp.getAttribute("data-selector");
+    const label = inp.getAttribute("data-label");
+    const val = inp.value ? inp.value.trim() : "";
+    answers[selector] = val;
+    if (shouldRemember && label && val) {
+      remember[label] = val;
+    }
+  });
+
+  hideQuestions();
+  appendFeed(`Answers submitted for ${$("questions-job-company").textContent}. Resuming apply…`);
+  await send({
+    type: "user-answers",
+    answers,
+    remember
+  });
+});
+
+$("skip-user-questions")?.addEventListener("click", async () => {
+  hideQuestions();
+  appendFeed(`Skipped ${$("questions-job-company").textContent} by user request.`);
+  await send({
+    type: "user-answers",
+    answers: {},
+    skip: true
+  });
 });
 
 $("auto-apply").addEventListener("click", startAutoApply);
