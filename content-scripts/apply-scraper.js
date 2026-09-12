@@ -1134,7 +1134,20 @@
       attempts++;
     }
 
-    return { ok: true, cityUsed: city };
+    const errEl = modal.querySelector(
+      '.shared_fieldError__t2UkY, .text-dark-warning, [class*="fieldError"], [class*="errorMessage"], [role="alert"]'
+    );
+    const errorText = errEl && isVisible(errEl) ? (errEl.textContent || "").trim() : "";
+    const mText = (modal.innerText || "");
+    const restricted = /not accepting applications from your current location|timezone or relocation constraints|relocation constraints|only accepting|only considering/i.test(mText);
+
+    return {
+      ok: true,
+      cityUsed: city,
+      hasLocationError: !!errorText || restricted,
+      locationErrorText: errorText,
+      locationRestricted: restricted
+    };
   }
 
   async function wellfoundFillTextarea({ selector, value }) {
@@ -1166,7 +1179,7 @@
   function wellfoundModalState() {
     const modal = getWellfoundModal();
     const fullText = (modal ? modal.innerText : "") + " " + (document.body ? document.body.innerText : "");
-    const locationRestricted = /not accepting applications from your current location|timezone or relocation constraints|relocation constraints/i.test(fullText);
+    const locationRestricted = /not accepting applications from your current location|timezone or relocation constraints|relocation constraints|only accepting candidates|only considering candidates|must be based in|must reside in|must be located in|not eligible to apply/i.test(fullText);
 
     if (!modal) {
       const text = document.body.innerText || "";
@@ -1175,8 +1188,11 @@
     }
 
     const locInput = getWellfoundLocationInput(modal);
-    const hasLocationError = !!modal.querySelector('.shared_fieldError__t2UkY, .text-dark-warning') ||
-                             (!!locInput && !locInput.value);
+    const errEl = modal.querySelector(
+      '.shared_fieldError__t2UkY, .text-dark-warning, [class*="fieldError"], [class*="errorMessage"], [class*="errorText"], [role="alert"], div[class*="styles_error"]'
+    );
+    const errorText = errEl && isVisible(errEl) ? (errEl.textContent || "").trim() : "";
+    const hasLocationError = !!errorText || (!!locInput && !locInput.value);
     const jobLocation = modal.querySelector('[data-testid="location-display"]')?.textContent?.trim() || "";
 
     const textareas = Array.from(modal.querySelectorAll('textarea')).filter(isVisible).map((t) => {
@@ -1188,6 +1204,8 @@
         value: t.value || ""
       };
     });
+
+    const allTextareasDisabled = textareas.length > 0 && textareas.every((t) => t.disabled);
 
     const allFields = scrapeFieldsIn(modal);
     const fields = allFields.filter((f) => !/downshift/i.test(f.selector) && f.type !== "hidden");
@@ -1207,6 +1225,8 @@
       inModal: true,
       locationRestricted,
       hasLocationError,
+      locationErrorText: errorText,
+      allTextareasDisabled,
       hasLocationInput: !!locInput,
       jobLocation,
       textareas,
