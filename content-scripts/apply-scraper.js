@@ -151,40 +151,22 @@
   function isVisible(el) {
     if (!el) return false;
     
-    // Check display and visibility
+    // Modern check for display, visibility, and opacity (including ancestors)
     if (typeof el.checkVisibility === "function") {
-      if (!el.checkVisibility({ checkVisibilityCSS: true })) {
+      if (!el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) {
         return false;
       }
     } else {
       const style = window.getComputedStyle(el);
-      if (style.display === "none" || style.visibility === "hidden") {
+      if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") {
         return false;
       }
-    }
-
-    if (el.closest('[aria-hidden="true"]')) return false;
-
-    const tagName = el.tagName.toLowerCase();
-    
-    // For inputs/selects/textareas, do NOT check opacity or width/height.
-    // LinkedIn often visually hides the actual <input type="radio"> or checkbox
-    // (e.g. width: 0, opacity: 0) and styles the adjacent label instead.
-    if (tagName === "input" || tagName === "select" || tagName === "textarea") {
-      return true;
-    }
-
-    // For buttons and containers, enforce strict opacity and size checks
-    // to ignore background "ghost" modals that LinkedIn leaves in the DOM.
-    if (typeof el.checkVisibility === "function") {
-      if (!el.checkVisibility({ checkOpacity: true })) return false;
-    } else {
-      const style = window.getComputedStyle(el);
-      if (style.opacity === "0") return false;
     }
 
     const rect = el.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return false;
+
+    if (el.closest('[aria-hidden="true"]')) return false;
 
     return true;
   }
@@ -532,7 +514,6 @@
     // 1. Prioritize the container of the ACTIVE Easy Apply footer button
     const footer = getEasyApplyFooterButton();
     if (footer) {
-
       let modalParent = footer.closest(
         '.artdeco-modal, [role="dialog"], .jobs-easy-apply-modal, form, [data-view-name*="modal"], [aria-modal="true"]'
       );
