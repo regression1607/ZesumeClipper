@@ -19,61 +19,56 @@
       </p>
 
       <section class="card">
-        <label for="apiUrl">Backend API URL</label>
-        <input id="apiUrl" type="url" placeholder="https://resume-backend-iota-ten.vercel.app" spellcheck="false" />
-        <p class="hint">
-          Your Zesume backend — serves <code>/api/*</code> and holds your login
-          session. Default: <code>https://resume-backend-iota-ten.vercel.app</code>.
-        </p>
-
-        <label for="appUrl" style="margin-top:18px">Frontend app URL</label>
-        <input id="appUrl" type="url" placeholder="https://zesume-frontend.vercel.app" spellcheck="false" />
-        <p class="hint">
-          Your Zesume web app — where tailored resumes open (<code>/r/:id</code>,
-          <code>/dashboard</code>). Default:
-          <code>https://zesume-frontend.vercel.app</code>. For local dev use
-          <code>http://localhost:5000</code> (API) and
-          <code>http://localhost:5173</code> (app).
-        </p>
-        <div class="btn-row">
-          <button id="save" class="btn primary" type="button">Save</button>
-          <button id="reset" class="btn ghost" type="button">Reset to defaults</button>
-          <span id="saved" class="saved"></span>
-        </div>
-      </section>
-
-      <section class="card">
-        <label>Auto-apply — profile</label>
+        <label>Auto-apply — Candidate Profile</label>
         <p class="hint" style="margin-top:0">
-          Auto-apply on LinkedIn / Indeed fills application fields using
-          <strong>Zesume's own AI</strong> through your signed-in account — no API
-          key needed. It uses the details below to answer name/email/experience
-          questions. Everything stays in this browser.
+          Zesume uses these details to automatically fill out application questions
+          (work authorization, experience, salary, links) and craft custom answers.
+          Everything stays secure in your browser.
         </p>
 
         <div class="grid2">
-          <div><label for="name" style="margin-top:16px">Full name</label><input id="name" type="text" class="input" /></div>
-          <div><label for="email" style="margin-top:16px">Email</label><input id="email" type="email" class="input" /></div>
-          <div><label for="phone" style="margin-top:16px">Phone</label><input id="phone" type="tel" class="input" /></div>
-          <div><label for="location" style="margin-top:16px">Location</label><input id="location" type="text" class="input" /></div>
+          <div><label for="name" style="margin-top:16px">Full name *</label><input id="name" type="text" class="input" placeholder="e.g. Jane Doe" /></div>
+          <div><label for="email" style="margin-top:16px">Email *</label><input id="email" type="email" class="input" placeholder="e.g. jane@example.com" /></div>
+          <div><label for="phone" style="margin-top:16px">Phone number</label><input id="phone" type="tel" class="input" placeholder="+1 (555) 012-3456" /></div>
+          <div><label for="location" style="margin-top:16px">Current Location (City, Country)</label><input id="location" type="text" class="input" placeholder="e.g. San Francisco, US or Delhi, India" /></div>
+          <div><label for="currentRole" style="margin-top:16px">Current / Most Recent Title</label><input id="currentRole" type="text" class="input" placeholder="e.g. Software Engineer" /></div>
+          <div><label for="experienceYears" style="margin-top:16px">Total Years of Experience</label><input id="experienceYears" type="number" min="0" max="50" class="input" placeholder="e.g. 4" /></div>
+          <div><label for="linkedin" style="margin-top:16px">LinkedIn Profile URL</label><input id="linkedin" type="url" class="input" placeholder="https://linkedin.com/in/username" /></div>
+          <div><label for="github" style="margin-top:16px">GitHub / Portfolio URL</label><input id="github" type="url" class="input" placeholder="https://github.com/username" /></div>
+          <div>
+            <label for="workAuthorization" style="margin-top:16px">Legally Authorized to Work?</label>
+            <select id="workAuthorization" class="input">
+              <option value="Yes">Yes</option>
+              <option value="No">No</option>
+            </select>
+          </div>
+          <div>
+            <label for="sponsorshipRequired" style="margin-top:16px">Require Visa Sponsorship?</label>
+            <select id="sponsorshipRequired" class="input">
+              <option value="No">No</option>
+              <option value="Yes">Yes</option>
+            </select>
+          </div>
+          <div><label for="noticePeriod" style="margin-top:16px">Notice Period / Availability</label><input id="noticePeriod" type="text" class="input" placeholder="e.g. Immediate / 15 Days / 30 Days" /></div>
+          <div><label for="expectedSalary" style="margin-top:16px">Expected Salary / Compensation</label><input id="expectedSalary" type="text" class="input" placeholder="e.g. $120,000 or Negotiable" /></div>
         </div>
 
-        <label for="links" style="margin-top:16px">LinkedIn / portfolio URLs</label>
-        <input id="links" type="text" class="input" placeholder="comma-separated" />
+        <label for="links" style="margin-top:16px">Other Links (comma-separated)</label>
+        <input id="links" type="text" class="input" placeholder="e.g. personal blog, Twitter, Behance" />
 
-        <label for="resumeText" style="margin-top:16px">Resume text (for answering questions)</label>
-        <textarea id="resumeText" class="input" rows="6"></textarea>
+        <label for="resumeText" style="margin-top:16px">Resume text (for answering deep technical questions)</label>
+        <textarea id="resumeText" class="input" rows="6" placeholder="Paste your resume plain text or skills summary here..."></textarea>
 
-        <label for="coverLetterTemplate" style="margin-top:16px">Cover letter template (use {company} and {role})</label>
-        <textarea id="coverLetterTemplate" class="input" rows="4"></textarea>
+        <label for="coverLetterTemplate" style="margin-top:16px">Cover letter / Note template (use {company} and {role})</label>
+        <textarea id="coverLetterTemplate" class="input" rows="4" placeholder="Hi {company} team, I am thrilled to apply for the {role} position..."></textarea>
 
         <div class="grid2">
-          <div><label for="batchSize" style="margin-top:16px">Batch size (review every N)</label><input id="batchSize" type="number" min="1" class="input" value="5" /></div>
-          <div><label for="rateLimitSeconds" style="margin-top:16px">Delay between jobs (sec)</label><input id="rateLimitSeconds" type="number" min="5" class="input" value="25" /></div>
+          <div><label for="batchSize" style="margin-top:16px">Batch size (review every N jobs)</label><input id="batchSize" type="number" min="1" class="input" value="5" /></div>
+          <div><label for="rateLimitSeconds" style="margin-top:16px">Delay between applications (sec)</label><input id="rateLimitSeconds" type="number" min="5" class="input" value="25" /></div>
         </div>
 
         <div class="btn-row">
-          <button id="save-ai" class="btn primary" type="button">Save auto-apply settings</button>
+          <button id="save-ai" class="btn primary" type="button">Save Profile Details</button>
           <span id="saved-ai" class="saved"></span>
         </div>
       </section>

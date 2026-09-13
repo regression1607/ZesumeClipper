@@ -324,7 +324,14 @@ async function restoreApplyInputs() {
   const { [APPLY_INPUTS_KEY]: saved } = await chrome.storage.local.get(APPLY_INPUTS_KEY);
   if (!saved) return;
   for (const id of applyInputFields) {
-    if (saved[id] !== undefined && saved[id] !== "") $(id).value = saved[id];
+    if (saved[id] !== undefined && saved[id] !== "") {
+      const el = $(id);
+      el.value = saved[id];
+      // If we restored a disabled option (like linkedin coming soon), force to wellfound
+      if (id === "board-select" && el.options[el.selectedIndex]?.disabled) {
+        el.value = "wellfound";
+      }
+    }
   }
   boardUrlEdited = !!saved.boardUrlEdited;
 }

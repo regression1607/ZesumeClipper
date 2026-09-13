@@ -64,10 +64,10 @@
         </div>
       </section>
 
-      <!-- Auto-apply (LinkedIn / Indeed) -->
+      <!-- Auto-apply -->
       <section class="card" id="apply-card">
         <div class="card-head">
-          <span class="label">Auto-apply · LinkedIn / Indeed / Wellfound</span>
+          <span class="label">Auto-apply · Wellfound / LinkedIn / Indeed / Naukri</span>
           <span id="apply-state" class="chip hidden">idle</span>
         </div>
         <div id="selectors-broken" class="warn-banner hidden">
@@ -96,9 +96,10 @@
         <label class="field">
           <span class="field-label">Job board</span>
           <select id="board-select" class="input">
-            <option value="linkedin">LinkedIn (Easy Apply)</option>
-            <option value="indeed">Indeed</option>
             <option value="wellfound">Wellfound (AngelList)</option>
+            <option value="linkedin" disabled>LinkedIn (Coming Soon)</option>
+            <option value="indeed" disabled>Indeed (Coming Soon)</option>
+            <option value="naukri" disabled>Naukri (Coming Soon)</option>
           </select>
         </label>
         <label class="field">
