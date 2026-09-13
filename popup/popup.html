@@ -123,6 +123,26 @@
           <button id="stop-apply" class="btn ghost hidden" type="button">Stop</button>
         </div>
 
+        <!-- Interactive Question & Answer card for manual input -->
+        <div id="questions-modal" class="questions-card hidden">
+          <div class="questions-header">
+            <div class="questions-title-wrap">
+              <span class="badge-action">Input Required</span>
+              <strong id="questions-job-company">Company</strong>
+            </div>
+            <span id="questions-job-subtitle" class="muted small">LinkedIn requires info not found in your resume</span>
+          </div>
+          <div id="questions-list" class="questions-list"></div>
+          <label class="remember-row">
+            <input type="checkbox" id="remember-answers-check" checked />
+            <span>Remember these answers for future applications</span>
+          </label>
+          <div class="row" style="gap: 8px;">
+            <button id="submit-user-answers" class="btn primary" type="button">Submit &amp; Continue</button>
+            <button id="skip-user-questions" class="btn ghost" type="button">Skip this job</button>
+          </div>
+        </div>
+
         <!-- Batch checkpoint -->
         <div id="checkpoint" class="checkpoint hidden">
           <div id="checkpoint-text" class="muted"></div>
