@@ -66,6 +66,13 @@
   function labelFromContainer(el) {
     const container = el.closest(LI_FIELD_CONTAINER);
     if (!container) return "";
+    
+    // Fallback for obfuscated UI: the question is in a <p> just before the fieldset
+    const prev = container.previousElementSibling;
+    if (prev && (prev.tagName === "P" || prev.tagName === "SPAN" || prev.tagName === "DIV") && prev.textContent.trim()) {
+      return cleanLabelText(prev.textContent);
+    }
+
     // Prefer an explicit <label> or <legend> whose text is a real question.
     const labelNode =
       container.querySelector("label:not([class*='visually-hidden'])") ||
@@ -150,23 +157,47 @@
 
   function isVisible(el) {
     if (!el) return false;
+
+    const tagName = el.tagName.toLowerCase();
+    const type = el.type ? el.type.toLowerCase() : "";
+
+    // In the new LinkedIn UI, the actual <input type="radio"> or <input type="checkbox"> 
+    // is completely hidden (display: none or opacity: 0) and wrapped in a div[role="radio"].
+    // We must bypass ALL visibility checks for these inputs so we can still extract them.
+    if (tagName === "input" && (type === "radio" || type === "checkbox")) {
+      return true;
+    }
     
-    // Modern check for display, visibility, and opacity (including ancestors)
+    // Check display and visibility
     if (typeof el.checkVisibility === "function") {
-      if (!el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) {
+      if (!el.checkVisibility({ checkVisibilityCSS: true })) {
         return false;
       }
     } else {
       const style = window.getComputedStyle(el);
-      if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") {
+      if (style.display === "none" || style.visibility === "hidden") {
         return false;
       }
     }
 
+    if (el.closest('[aria-hidden="true"]')) return false;
+    
+    // For selects/textareas/other inputs, do NOT check opacity or width/height.
+    if (tagName === "input" || tagName === "select" || tagName === "textarea") {
+      return true;
+    }
+
+    // For buttons and containers, enforce strict opacity and size checks
+    // to ignore background "ghost" modals that LinkedIn leaves in the DOM.
+    if (typeof el.checkVisibility === "function") {
+      if (!el.checkVisibility({ checkOpacity: true })) return false;
+    } else {
+      const style = window.getComputedStyle(el);
+      if (style.opacity === "0") return false;
+    }
+
     const rect = el.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return false;
-
-    if (el.closest('[aria-hidden="true"]')) return false;
 
     return true;
   }
@@ -236,7 +267,14 @@
         '[class*="primary-description"], .job-card-container__company-name, ' +
         '[data-test="StartupHeader"] a, [class*="styles_startupName"], [class*="styles_company"]'
       );
-      return dedupeText(el?.textContent || "").slice(0, 120);
+      let comp = dedupeText(el?.textContent || "").slice(0, 120);
+      if (!comp || comp.length < 2) {
+        const pTags = Array.from(card.querySelectorAll("p"));
+        if (pTags.length > 1) {
+          comp = dedupeText(pTags[1].textContent || "").slice(0, 120);
+        }
+      }
+      return comp;
     };
 
     const cardLocation = (card, a) => {
@@ -257,7 +295,14 @@
         '.job-card-container__metadata-item, [class*="metadata-item"], ' +
         '.artdeco-entity-lockup__caption'
       );
-      return dedupeText(el?.textContent || "").slice(0, 120);
+      let loc = dedupeText(el?.textContent || "").slice(0, 120);
+      if (!loc || loc.length < 2) {
+        const pTags = Array.from(card.querySelectorAll("p"));
+        if (pTags.length > 2) {
+          loc = dedupeText(pTags[2].textContent || "").slice(0, 120);
+        }
+      }
+      return loc;
     };
 
     // Normalize to a clean standalone job URL when a job id is present, so we
@@ -355,35 +400,104 @@
       }
     }
 
-    // Generic fallback:
-    const anchors = Array.from(document.querySelectorAll("a[href]")).filter((a) => {
-      const h = a.href || "";
-      // Explicitly reject navigation and non-job Wellfound URLs
-      if (/\/jobs\/(home|messages|applications|starred|hidden)(\/|\?|$)/i.test(h) ||
-          /\/jobs\/?$/i.test(h) ||
-          /\/profile\/|\/company\/[^/]+$/i.test(h)) {
-        return false;
+    // Generic fallback for LinkedIn and others:
+    // First, try to find explicit LinkedIn job card containers
+    const liCards = Array.from(document.querySelectorAll(
+      '[componentkey^="job-card-component-ref-"], [data-occludable-job-id], [data-job-id], .job-card-container, .job-card-list, .jobs-search-results__list-item, .scaffold-layout__list-item, li.reusable-search__result-container'
+    ));
+    const anchorCards = Array.from(document.querySelectorAll("a[href]"));
+    
+    // Process explicit cards first
+    for (const card of liCards) {
+      if (jobs.length >= 40) break;
+      const cardText = card.textContent || "";
+      if (cardText.trim().length < 20) continue;
+      const normalizedCardText = cardText.replace(/\s+/g, " ").trim();
+
+      let url = "";
+      const jobIdRaw = card.getAttribute("componentkey") || card.getAttribute("data-occludable-job-id") || card.getAttribute("data-job-id") || "";
+      const jobId = jobIdRaw.replace(/\D/g, "");
+      if (jobId) {
+        url = `https://www.linkedin.com/jobs/view/${jobId}/`;
+      } else {
+        const href = card.querySelector("a[href]")?.href;
+        if (href) url = normalizeJobUrl(href);
       }
-      return /\/jobs\/view\/|\/viewjob|\/clk|\/job\/|\/careers\/|\/positions?\//i.test(h) ||
-             /wellfound\.com\/(jobs|l\/|company\/[^/]+\/jobs)/i.test(h) ||
-             (isWellfound && /\/jobs\/|\/l\//i.test(h)) ||
-             /job|position|opening|posting/i.test(h);
-             /\/jobs\/\d+/i.test(h) ||
-             (isWellfound && /\/l\/[a-z0-9_-]+/i.test(h));
+      if (!url || seen.has(url)) continue;
+
+      inspected++;
+
+      const hasEasyApplyText = EASY_APPLY_RE.test(normalizedCardText);
+      const isApplied = /\bapplied\b/i.test(normalizedCardText);
+      if (!hasEasyApplyText && !isApplied) {
+        rejectedNonEasy++;
+        continue;
+      }
+
+      // Find the actual job title element. Do not use loose [class*="title"] because it matches subtitles.
+      const titleEl = card.querySelector('.job-card-list__title, .job-card-container__title, .artdeco-entity-lockup__title');
+      let title = dedupeText(titleEl?.textContent || "");
+      if (title.length < 3) {
+        // Fallback: The title is usually the first link that has a meaningful text
+        const links = Array.from(card.querySelectorAll("a"));
+        for (const link of links) {
+          const t = dedupeText(link.textContent || "");
+          if (t.length > 5 && !/on-site|remote|hybrid|apply|save/i.test(t)) {
+            title = t;
+            break;
+          }
+        }
+      }
+      if (title.length < 3) {
+        // Ultimate Fallback: The title is the first <p> tag with text that isn't metadata
+        const pTags = Array.from(card.querySelectorAll("p"));
+        for (const p of pTags) {
+          const t = dedupeText(p.textContent || "");
+          if (t.length > 5 && !/on-site|remote|hybrid|apply|save|hours ago|days ago/i.test(t)) {
+            title = t;
+            break;
+          }
+        }
+      }
+      title = title.slice(0, 160);
+      if (title.length < 3 || /premium|recruiter|feedback|promoted/i.test(title)) continue;
+
+      seen.add(url);
+      jobs.push({
+        title,
+        company: cardCompany(card, card),
+        location: cardLocation(card, card),
+        description: normalizedCardText.slice(0, 400),
+        url,
+        easyApply: true
+      });
+    }
+
+    // Then fallback to anchor tags for other sites or loose layouts
+    const anchors = anchorCards.filter((a) => {
+      const h = a.href || "";
+      try {
+        const u = new URL(h, location.href);
+        const path = u.pathname;
+        if (/\/jobs\/(home|messages|applications|starred|hidden)(\/|\?|$)/i.test(path) ||
+            /\/jobs\/?$/i.test(path) ||
+            /\/profile\/|\/company\/[^/]+$/i.test(path)) {
+          return false;
+        }
+        return /\/jobs\/view\/|\/viewjob|\/clk|\/job\/|\/careers\/|\/positions?\//i.test(path) ||
+               u.searchParams.has("currentJobId") ||
+               /\/jobs\/\d+/i.test(path);
+      } catch (_) { return false; }
     });
 
     for (const a of anchors) {
+      if (jobs.length >= 40) break;
       const href = a.href;
-      if (!href) continue;
       const url = normalizeJobUrl(href);
       if (seen.has(url)) continue;
 
-      // Walk up until we find a container big enough to include the whole card
-      // (title + company + Easy Apply badge). LinkedIn's new UI wraps each
-      // listing in an <li>, sometimes deeply nested.
       let card = a.closest("li, article, [data-view-name], [data-occludable-job-id], [data-test*='JobListing'], [class*='styles_jobListing']");
       if (!card) card = a.parentElement;
-      // Expand outward if container looks too small.
       let hops = 0;
       while (card && card.parentElement && card.textContent.length < 60 && hops < 4) {
         card = card.parentElement;
@@ -392,29 +506,33 @@
       if (!card) continue;
 
       const cardText = card.textContent || "";
-      // Skip navigational anchors / breadcrumbs that don't look like a listing.
       if (cardText.trim().length < 20) continue;
+      const normalizedCardText = cardText.replace(/\s+/g, " ").trim();
 
       inspected++;
 
       if (isWellfound) {
-        const isApplied = /\bapplied\b/i.test(cardText);
+        const isApplied = /\bapplied\b/i.test(normalizedCardText);
         if (isApplied) {
           rejectedNonEasy++;
           continue;
         }
-        const hasApply = /apply|quick apply/i.test(cardText) || /\/jobs\/|\/l\//i.test(href);
+        const hasApply = /apply|quick apply/i.test(normalizedCardText) || /\/jobs\/|\/l\//i.test(href);
         if (!hasApply) {
           rejectedNonEasy++;
           continue;
         }
-      } else if (!EASY_APPLY_RE.test(cardText)) {
-        rejectedNonEasy++;
-        continue;
+      } else {
+        const hasEasyApplyText = EASY_APPLY_RE.test(normalizedCardText);
+        const isApplied = /\bapplied\b/i.test(normalizedCardText);
+        if (!hasEasyApplyText && !isApplied) {
+          rejectedNonEasy++;
+          continue;
+        }
       }
 
       const title = cardTitle(a, card);
-      if (title.length < 3) continue;
+      if (title.length < 3 || /premium|recruiter|feedback|promoted/i.test(title)) continue;
 
       seen.add(url);
       jobs.push({
@@ -494,12 +612,12 @@
   // brief loading state as "the flow closed".
   function getEasyApplyFooterButton() {
     const candidates = Array.from(document.querySelectorAll(APPLY_FOOTER_SELECTOR));
-    const bySelector = candidates.find((b) => isVisible(b));
+    const bySelector = candidates.reverse().find((b) => isVisible(b));
     if (bySelector) return bySelector;
 
     // Fallback for new LinkedIn UI where data-view-name is omitted on hashed classes:
     const allButtons = Array.from(document.querySelectorAll("button")).filter(isVisible);
-    const byText = allButtons.find((b) => {
+    const byText = allButtons.reverse().find((b) => {
       const t = (b.textContent || "").trim();
       const aria = (b.getAttribute("aria-label") || "").trim();
       if (/easy apply/i.test(aria) || /^easy apply/i.test(t)) return false;
@@ -945,8 +1063,19 @@
       if (t) return t;
     }
     if (el.getAttribute("aria-label")) return el.getAttribute("aria-label").trim();
+    
+    // Check immediate sibling
     const next = el.nextElementSibling;
     if (next && (next.textContent || "").trim()) return next.textContent.trim();
+    
+    // Fallback for obfuscated LinkedIn UI: the input is wrapped in a div, 
+    // and the label text ("Yes"/"No") is in a sibling div.
+    const parent = el.parentElement;
+    if (parent) {
+      const siblingDiv = parent.nextElementSibling;
+      if (siblingDiv && siblingDiv.textContent) return siblingDiv.textContent.trim();
+    }
+    
     return (el.value || "").trim();
   }
 
