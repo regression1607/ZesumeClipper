@@ -354,6 +354,43 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
 });
 
+function reportIssue(context = "") {
+  const manifest = chrome.runtime.getManifest();
+  const version = manifest?.version || "0.1.0";
+  const board = $("board-select")?.value || "unknown";
+  const currentUrl = currentClip?.url || "";
+  const company = currentClip?.company || "";
+  const role = currentClip?.role || "";
+  const subject = `[Zesume Clipper Issue] Selector / Auto-Apply feedback (${board})`;
+  const body = [
+    "Hi Zesume team,",
+    "",
+    "I am reporting an issue with Zesume Clipper Auto-Apply:",
+    "----------------------------------------------------",
+    `Job Board: ${board}`,
+    `Extension Version: v${version}`,
+    `Company: ${company}`,
+    `Role: ${role}`,
+    `Job Page URL: ${currentUrl}`,
+    `Issue Summary: ${context || "Page layout changed / unhandled field / error encountered"}`,
+    "",
+    "[IMPORTANT: Please attach a screenshot of the job application page and paste any console logs or error messages below]",
+    "",
+    "----------------------------------------------------",
+    "Console Logs & Additional Details:",
+    "",
+  ].join("\n");
+  const mailto = `mailto:ekanshrajput1607@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  chrome.tabs.create({ url: mailto });
+}
+
+$("report-broken-btn")?.addEventListener("click", () => {
+  reportIssue("Job board changed their page layout / apply controls could not be found.");
+});
+$("help-report-btn")?.addEventListener("click", () => {
+  reportIssue();
+});
+
 $("dismiss-broken").addEventListener("click", () => {
   $("selectors-broken").classList.add("hidden");
 });

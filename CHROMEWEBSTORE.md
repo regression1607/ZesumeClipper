@@ -16,7 +16,7 @@ Zesume Clipper is your all-in-one career assistant that clips job descriptions f
 KEY FEATURES:
 - One-Click Job Description Clipper: Automatically extract role titles, company names, and full requirements from job postings across the web.
 - Instant AI Resume Tailoring: Match your skills and achievements to specific job description keywords in seconds directly from your browser.
-- Wellfound Auto-Apply: Automate startup job applications on Wellfound (AngelList) with intelligent screening question responses.
+- Wellfound & LinkedIn Auto-Apply: Automate job applications on Wellfound (AngelList) and LinkedIn (Easy Apply) with intelligent screening question responses. Support for Indeed and Naukri is coming next!
 - ATS Match Scoring: View live match scores and keyword suggestions before submitting your application.
 - Seamless Zesume Integration: Sync directly with your Zesume.in account, existing resumes, and credit balance without needing separate API keys.
 
@@ -25,18 +25,22 @@ HOW TO USE:
 2. Open any job posting on Wellfound, LinkedIn, Indeed, or any company careers page.
 3. Click the Zesume Clipper icon in your Chrome toolbar to open the side panel.
 4. Click "Tailor my resume to this job" to generate an ATS-optimized CV, or configure Auto-Apply to apply on autopilot.
+5. Review all pre-filled fields and complete any unhandled or unique questions manually before submitting.
+
+DISCLAIMER & TERMS:
+Zesume Clipper is an independent assistive tool and is NOT affiliated with, sponsored by, or endorsed by LinkedIn, Wellfound, Indeed, or Naukri. Users must review all job application answers before submission. Full terms: https://www.zesume.in/terms.
 
 PRIVACY & SECURITY:
 Your personal information and resumes remain private. Zesume Clipper communicates securely over HTTPS with your authenticated Zesume account session. We do not sell your personal data or browsing history to third parties.
 
 SUPPORT & FEEDBACK:
-Need help or have suggestions? Contact our team at ekanshrajput1607@gmail.com or visit https://www.zesume.in.
+Need help, found a layout bug, or have suggestions? Contact our team with screenshots and logs at ekanshrajput1607@gmail.com or visit https://www.zesume.in.
 
 **Category** [REQUIRED]
 Productivity
 
 **Single Purpose** [REQUIRED]
-Tailors your resume to job postings from any webpage and automates startup job applications in one click.
+Tailors your resume to job postings from any webpage and automates job applications on Wellfound and LinkedIn in one click.
 
 **Primary Language** [REQUIRED]
 English
@@ -131,5 +135,5 @@ https://www.zesume.in
 
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|
-| 0.1.0 | 2026-09-13 | Initial store release with JD clipping, AI resume tailoring, and Wellfound auto-apply. | Ready to Submit |
+| 0.1.0 | 2026-09-14 | Initial store release with JD clipping, AI resume tailoring, and Wellfound & LinkedIn auto-apply. | Ready to Submit |
 
