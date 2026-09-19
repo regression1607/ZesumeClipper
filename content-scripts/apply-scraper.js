@@ -1277,9 +1277,18 @@
     const locInput = getWellfoundLocationInput(modal);
     if (!locInput) return { ok: true, note: "no-location-input-needed" };
 
-    const hasError = !!modal.querySelector('.shared_fieldError__t2UkY, .text-dark-warning') || !locInput.value;
-    if (!hasError && locInput.value && locInput.value.length > 2) {
+    // Check if location is already properly filled (no error, has value)
+    const earlyErrEl = modal.querySelector('.shared_fieldError__t2UkY, .text-dark-warning');
+    const earlyErrText = earlyErrEl && isVisible(earlyErrEl) ? (earlyErrEl.textContent || "") : "";
+    const isSoftWarning = /improve your odds/i.test(earlyErrText);
+    const isTooBroad = /too broad/i.test(earlyErrText);
+    // Only skip if there's no error at all (soft warnings and "too broad" both need action)
+    if (!earlyErrText && locInput.value && locInput.value.length > 2) {
       return { ok: true, note: "already-filled" };
+    }
+    // If it's just a soft warning (improve your odds) but location IS filled, proceed
+    if (isSoftWarning && !isTooBroad && locInput.value && locInput.value.length > 2) {
+      return { ok: true, note: "already-filled-soft-warning" };
     }
 
     const jobLocDisplay = modal.querySelector('[data-testid="location-display"]')?.textContent?.trim() || "";
@@ -1290,57 +1299,167 @@
       city = extractCity(city) || city;
     }
 
+    // Helper: call React's internal event handler directly on an element.
+    // React stores handlers on DOM nodes via __reactProps$xxx or __reactEventHandlers$xxx keys.
+    function callReactHandler(el, handlerName) {
+      for (const key of Object.keys(el)) {
+        if (key.startsWith("__reactProps$") || key.startsWith("__reactEventHandlers$")) {
+          const props = el[key];
+          if (props && typeof props[handlerName] === "function") {
+            const fakeEvt = {
+              preventDefault() {}, stopPropagation() {},
+              nativeEvent: { stopImmediatePropagation() {}, preventDefault() {}, stopPropagation() {} },
+              target: el, currentTarget: el,
+              type: handlerName.replace(/^on/, "").toLowerCase(),
+              button: 0, bubbles: true, cancelable: true, defaultPrevented: false,
+              persist() {}
+            };
+            try { props[handlerName](fakeEvt); } catch (_) {}
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    // Helper: check if dropdown selection worked (textarea enabled, error gone)
+    function isLocationAccepted() {
+      const ta = modal.querySelector("textarea");
+      if (ta && !ta.disabled) return true;
+      const err = modal.querySelector(".shared_fieldError__t2UkY");
+      if (!err || !isVisible(err)) return true;
+      const errTxt = (err.textContent || "");
+      // "too broad" means not accepted; "improve your odds" is fine
+      if (/too broad/i.test(errTxt)) return false;
+      return true;
+    }
+
+    // Step 1: Clear the input and type the city name
     locInput.focus();
     locInput.click();
+    await new Promise(r => setTimeout(r, 100));
 
+    // Clear via native setter + React-compatible input event
     const proto = HTMLInputElement.prototype;
     const desc = Object.getOwnPropertyDescriptor(proto, "value");
+    if (desc && desc.set) desc.set.call(locInput, "");
+    else locInput.value = "";
+    locInput.dispatchEvent(new Event("input", { bubbles: true }));
+    locInput.dispatchEvent(new Event("change", { bubbles: true }));
+    // Also try calling React's onChange directly on the input
+    callReactHandler(locInput, "onChange");
+    await new Promise(r => setTimeout(r, 200));
+
+    // Type the city using native setter (React-compatible)
     if (desc && desc.set) desc.set.call(locInput, city);
     else locInput.value = city;
 
     locInput.dispatchEvent(new Event("input", { bubbles: true }));
     locInput.dispatchEvent(new Event("change", { bubbles: true }));
+    callReactHandler(locInput, "onChange");
 
-    await new Promise((r) => setTimeout(r, 600));
+    // Wait for Downshift to fetch/filter dropdown results
+    await new Promise(r => setTimeout(r, 900));
 
-    const options = Array.from(document.querySelectorAll(
-      '[role="option"], [id*="downshift"][id*="item"], div[class*="styles_item"], li[class*="styles_item"], [data-test*="downshift-item"]'
+    // Step 2: Find dropdown items and try to select one
+    const getItems = () => Array.from(document.querySelectorAll(
+      '[role="option"], [id*="downshift"][id*="item"]'
     )).filter(isVisible);
 
-    if (options.length > 0) {
-      const match = options.find((o) => (o.textContent || "").toLowerCase().includes(city.toLowerCase())) || options[0];
-      match.click();
-      await new Promise((r) => setTimeout(r, 400));
-    } else {
+    let items = getItems();
+
+    // ---- STRATEGY A: React internal onClick/onMouseDown handler ----
+    if (items.length > 0 && !isLocationAccepted()) {
+      const target = items.find(o => (o.textContent || "").toLowerCase().includes(city.toLowerCase())) || items[0];
+      // Try onClick first, then onMouseDown, then onPointerDown
+      const clicked = callReactHandler(target, "onClick") ||
+                      callReactHandler(target, "onMouseDown") ||
+                      callReactHandler(target, "onPointerDown");
+      if (clicked) {
+        await new Promise(r => setTimeout(r, 600));
+      }
+    }
+
+    // ---- STRATEGY B: Keyboard ArrowDown + Enter on the input ----
+    if (!isLocationAccepted()) {
+      items = getItems();
+      if (items.length > 0) {
+        locInput.focus();
+        let matchIdx = items.findIndex(o => (o.textContent || "").toLowerCase().includes(city.toLowerCase()));
+        if (matchIdx < 0) matchIdx = 0;
+        for (let i = 0; i <= matchIdx; i++) {
+          locInput.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", keyCode: 40, which: 40, bubbles: true }));
+          await new Promise(r => setTimeout(r, 60));
+        }
+        locInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 13, which: 13, bubbles: true }));
+        locInput.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", keyCode: 13, which: 13, bubbles: true }));
+        await new Promise(r => setTimeout(r, 600));
+      }
+    }
+
+    // ---- STRATEGY C: Full DOM event sequence (pointer + mouse + click) ----
+    if (!isLocationAccepted()) {
+      items = getItems();
+      if (items.length > 0) {
+        const target = items.find(o => (o.textContent || "").toLowerCase().includes(city.toLowerCase())) || items[0];
+        const evOpts = { bubbles: true, cancelable: true, composed: true, view: window };
+        target.dispatchEvent(new PointerEvent("pointerenter", evOpts));
+        target.dispatchEvent(new MouseEvent("mouseenter", { ...evOpts, cancelable: false }));
+        target.dispatchEvent(new PointerEvent("pointerdown", evOpts));
+        target.dispatchEvent(new MouseEvent("mousedown", evOpts));
+        await new Promise(r => setTimeout(r, 50));
+        target.dispatchEvent(new PointerEvent("pointerup", evOpts));
+        target.dispatchEvent(new MouseEvent("mouseup", evOpts));
+        target.click();
+        await new Promise(r => setTimeout(r, 600));
+      }
+    }
+
+    // ---- STRATEGY D: execCommand to type the full display text, then Enter ----
+    if (!isLocationAccepted()) {
+      items = getItems();
+      const targetText = items.length > 0
+        ? (items.find(o => (o.textContent || "").toLowerCase().includes(city.toLowerCase())) || items[0]).textContent.split("\n")[0].trim()
+        : city + ", India";
+      locInput.focus();
+      locInput.select();
+      document.execCommand("selectAll");
+      document.execCommand("delete");
+      await new Promise(r => setTimeout(r, 200));
+      document.execCommand("insertText", false, targetText);
+      await new Promise(r => setTimeout(r, 900));
+      // Re-fetch items and try ArrowDown + Enter
       locInput.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", keyCode: 40, which: 40, bubbles: true }));
-      await new Promise((r) => setTimeout(r, 200));
+      await new Promise(r => setTimeout(r, 100));
       locInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 13, which: 13, bubbles: true }));
-      locInput.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", keyCode: 13, which: 13, bubbles: true }));
-      await new Promise((r) => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, 600));
     }
 
     locInput.dispatchEvent(new Event("blur", { bubbles: true }));
 
-    let attempts = 0;
-    while (attempts < 12) {
-      const ta = modal.querySelector('textarea');
-      if (ta && !ta.disabled) break;
-      await new Promise((r) => setTimeout(r, 250));
-      attempts++;
+    // Wait up to 3s for textarea to become enabled (location accepted)
+    let waitAttempts = 0;
+    while (waitAttempts < 12) {
+      if (isLocationAccepted()) break;
+      await new Promise(r => setTimeout(r, 250));
+      waitAttempts++;
     }
 
-    const errEl = modal.querySelector(
+    const finalErrEl = modal.querySelector(
       '.shared_fieldError__t2UkY, .text-dark-warning, [class*="fieldError"], [class*="errorMessage"], [role="alert"]'
     );
-    const errorText = errEl && isVisible(errEl) ? (errEl.textContent || "").trim() : "";
+    const errorText = finalErrEl && isVisible(finalErrEl) ? (finalErrEl.textContent || "").trim() : "";
     const mText = (modal.innerText || "");
     const restricted = /not accepting applications from your current location|timezone or relocation constraints|relocation constraints|only accepting|only considering/i.test(mText);
+    // Treat "improve your odds" as non-blocking
+    const finalIsSoft = /improve your odds/i.test(errorText);
+    const effectiveError = finalIsSoft ? "" : errorText;
 
     return {
       ok: true,
       cityUsed: city,
-      hasLocationError: !!errorText || restricted,
-      locationErrorText: errorText,
+      hasLocationError: !!effectiveError || restricted,
+      locationErrorText: effectiveError,
       locationRestricted: restricted
     };
   }
@@ -1387,7 +1506,11 @@
       '.shared_fieldError__t2UkY, .text-dark-warning, [class*="fieldError"], [class*="errorMessage"], [class*="errorText"], [role="alert"], div[class*="styles_error"]'
     );
     const errorText = errEl && isVisible(errEl) ? (errEl.textContent || "").trim() : "";
-    const hasLocationError = !!errorText || (!!locInput && !locInput.value);
+    const isSoftWarning = /improve your odds/i.test(errorText);
+    
+    // "too broad" is only a hard error if the textarea is still disabled (meaning location wasn't selected)
+    const tooBroadButTextareaOk = /too broad/i.test(errorText) && modal.querySelector("textarea") && !modal.querySelector("textarea").disabled;
+    const hasLocationError = (!!errorText && !isSoftWarning && !tooBroadButTextareaOk) || (!!locInput && !locInput.value);
     const jobLocation = modal.querySelector('[data-testid="location-display"]')?.textContent?.trim() || "";
 
     const textareas = Array.from(modal.querySelectorAll('textarea')).filter(isVisible).map((t) => {
@@ -1420,7 +1543,7 @@
       inModal: true,
       locationRestricted,
       hasLocationError,
-      locationErrorText: errorText,
+      locationErrorText: (isSoftWarning || tooBroadButTextareaOk) ? "" : errorText,
       allTextareasDisabled,
       hasLocationInput: !!locInput,
       jobLocation,
@@ -1431,7 +1554,6 @@
       primaryButtonText: sendBtn ? (sendBtn.textContent || "").trim() : "Send application"
     };
   }
-
   async function wellfoundClickSend() {
     const modal = getWellfoundModal();
     if (!modal) return { ok: false, error: "no-modal" };

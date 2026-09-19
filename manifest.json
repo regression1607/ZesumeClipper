@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Zesume Clipper",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Clip any job description and tailor your Zesume.ai resume to it in one click.",
   "permissions": ["storage", "activeTab", "scripting", "tabs", "sidePanel"],
   "host_permissions": ["<all_urls>"],
