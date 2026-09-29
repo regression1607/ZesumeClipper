@@ -11,8 +11,8 @@ async function loadAi() {
   $("experienceYears").value = p.experienceYears ?? "";
   $("linkedin").value = p.linkedin || "";
   $("github").value = p.github || "";
-  $("workAuthorization").value = p.workAuthorization || "Yes";
-  $("sponsorshipRequired").value = p.sponsorshipRequired || "No";
+  $("workAuthorization").value = p.workAuthorization || "";
+  $("sponsorshipRequired").value = p.sponsorshipRequired || "";
   $("noticePeriod").value = p.noticePeriod || "";
   $("expectedSalary").value = p.expectedSalary || "";
   $("links").value = p.links || "";

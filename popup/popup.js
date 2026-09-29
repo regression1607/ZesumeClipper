@@ -250,13 +250,14 @@ function hideCheckpoint() {
 
 
 function renderQuestions(questions, jobContext) {
+  $("submit-user-answers").textContent = questions?.[0]?.selector === 'review-next' ? 'Continue' : 'Approve & Fill';
   const modal = $("questions-modal");
   if (!modal) return;
   modal.classList.remove("hidden");
 
   $("questions-job-company").textContent = jobContext?.company || "Job Application";
   $("questions-job-subtitle").textContent =
-    `Required by ${jobContext?.company || "employer"} · Step ${jobContext?.step || 1}`;
+    `${jobContext?.stage || 'Review answers'} · ${jobContext?.company || "employer"} · Step ${jobContext?.step || 1}`;
 
   const list = $("questions-list");
   list.innerHTML = "";
@@ -412,7 +413,7 @@ $("submit-user-answers")?.addEventListener("click", async () => {
   const inputs = modal.querySelectorAll("[data-selector]");
   const answers = {};
   const remember = {};
-  const shouldRemember = $("remember-answers-check")?.checked ?? true;
+  const shouldRemember = false;
 
   inputs.forEach((inp) => {
     const selector = inp.getAttribute("data-selector");

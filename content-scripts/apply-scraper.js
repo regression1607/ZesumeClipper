@@ -1594,11 +1594,39 @@
     return { ok: true, confirmed };
   }
 
+  function secureScrapeForm() {
+    window.__zesumeFieldSnapshot = null;
+    const root = getLinkedInModal() || getWellfoundModal();
+    if (!root) throw new Error('Open the application dialog on the job page first.');
+    if (root.querySelector('input[type="password"], input[autocomplete^="cc-"], input[autocomplete="one-time-code"]')) {
+      throw new Error('Authentication or payment fields cannot be automated.');
+    }
+    const fields = scrapeFieldsIn(root).filter(field => {
+      const element = document.querySelector(field.selector);
+      if (!element || element.type === 'checkbox' || element.type === 'password') return false;
+      if (element.form && new URL(element.form.action || location.href).origin !== location.origin) return false;
+      return field.currentValue === '' || field.currentValue === null || field.currentValue === undefined;
+    }).slice(0, 80).map(({ currentValue, ...field }) => field);
+    const id = crypto.randomUUID();
+    window.__zesumeFieldSnapshot = {
+      id, root, url: location.href, createdAt: Date.now(),
+      fields: new Map(fields.map(field => [field.selector, document.querySelector(field.selector)])),
+    };
+    return { ok: true, id, url: location.href, fields };
+  }
+
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (!msg || typeof msg !== "object") return;
+    if (sender.id !== chrome.runtime.id || location.protocol !== 'https:'
+        || !['linkedin.com', 'www.linkedin.com', 'wellfound.com', 'www.wellfound.com', 'angel.co', 'www.angel.co'].includes(location.hostname)) return;
     (async () => {
       try {
-        if (msg.type === "scrapeListings") {
+        if (msg.type === 'secureScrapeForm') {
+          sendResponse(secureScrapeForm());
+        } else if (msg.type === 'cancelApplication') {
+          window.__zesumeFieldSnapshot = null;
+          sendResponse({ ok: true });
+        } else if (msg.type === "scrapeListings") {
           sendResponse(scrapeListings());
         } else if (msg.type === "scrapeForm") {
           sendResponse(scrapeForm());
@@ -1607,17 +1635,17 @@
         } else if (msg.type === "linkedinModalState") {
           sendResponse(linkedinModalState());
         } else if (msg.type === "linkedinClickPrimary") {
-          sendResponse(await linkedinClickPrimary());
+          sendResponse({ ok: false, error: 'Continue or submit in the job page.' });
         } else if (msg.type === "wellfoundOpenApply") {
           sendResponse(await wellfoundOpenApply());
         } else if (msg.type === "wellfoundModalState") {
           sendResponse(wellfoundModalState());
         } else if (msg.type === "wellfoundFillLocation") {
-          sendResponse(await wellfoundFillLocation(msg.location));
+          sendResponse({ ok: false, error: 'Use reviewed field filling.' });
         } else if (msg.type === "wellfoundFillTextarea") {
-          sendResponse(await wellfoundFillTextarea(msg));
+          sendResponse({ ok: false, error: 'Use reviewed field filling.' });
         } else if (msg.type === "wellfoundClickSend") {
-          sendResponse(await wellfoundClickSend());
+          sendResponse({ ok: false, error: 'Submit in the job page.' });
         }
       } catch (e) {
         sendResponse({ error: e.message });

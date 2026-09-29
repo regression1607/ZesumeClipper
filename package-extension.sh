@@ -21,6 +21,8 @@ zip -r "$OUTPUT" . \
   -x "node_modules" \
   -x ".env" \
   -x "*.map" \
+  -x "*.test.mjs" \
+  -x "*.zip" \
   -x "*.sh" \
   -x "CHROMEWEBSTORE.md" \
   -x "README.md" \

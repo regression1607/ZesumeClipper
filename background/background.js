@@ -4,7 +4,7 @@
 // All authenticated calls go directly to the Zesume app origin with the user's
 // session cookies (credentials: "include"). No API keys are stored.
 
-import { getApiUrl, getAppUrl, ENDPOINTS, ROUTES } from "../lib/config.js";
+import { apiFetch, getAppUrl, ENDPOINTS, ROUTES } from "../lib/config.js";
 import { handleAutoApplyMessage } from "../lib/auto-apply.js";
 
 // Open the native side panel when the toolbar action icon is clicked.
@@ -26,13 +26,7 @@ chrome.action.onClicked.addListener(async (tab) => {
 });
 
 async function api(path, options = {}) {
-  const apiUrl = await getApiUrl();
-  const res = await fetch(`${apiUrl}${path}`, {
-    credentials: "include",
-    headers: { "content-type": "application/json", ...(options.headers || {}) },
-    ...options,
-  });
-  return res;
+  return apiFetch(path, options);
 }
 
 // ---------- JD scraping ----------
@@ -126,6 +120,11 @@ async function saveClip(clip) {
 // ---------- message router ----------
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  const trustedPages = ['popup/popup.html', 'options/options.html'].map(path => chrome.runtime.getURL(path));
+  if (sender.id !== chrome.runtime.id || sender.tab || !trustedPages.includes(sender.url?.split('?')[0])) {
+    sendResponse({ ok: false, error: 'Untrusted sender' });
+    return false;
+  }
   (async () => {
     try {
       // Delegate auto-apply message types to the ported engine first.
@@ -162,3 +161,5 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   })();
   return true; // async
 });
+
+chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }).catch(() => {});

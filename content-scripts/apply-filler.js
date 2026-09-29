@@ -97,7 +97,7 @@
     return typeof el.value === "string" && el.value.trim().length > 0;
   }
 
-  function fillOne({ selector, value }) {
+  function fillOne({ selector, value }, root) {
     let el;
     try {
       el = document.querySelector(selector);
@@ -107,6 +107,9 @@
     if (!el) return { selector, ok: false, reason: "not-found" };
 
     const type = (el.type || el.tagName).toLowerCase();
+    if (!['text', 'email', 'tel', 'url', 'number', 'textarea', 'select-one', 'radio'].includes(type)
+      || el.disabled || el.readOnly || !el.isConnected || el.closest('[aria-hidden="true"]')
+      || (!el.getClientRects().length && type !== 'radio')) return { selector, ok: false, reason: 'unsafe-field' };
 
     // Preserve existing text/select values (e.g. LinkedIn pre-fill). Radios and
     // checkboxes are handled inside their branches so we can switch a wrong
@@ -128,7 +131,7 @@
       } else if (type === "radio") {
         const name = el.name;
         const group = name
-          ? document.querySelectorAll(`input[type="radio"][name="${CSS.escape(name)}"]`)
+          ? root.querySelectorAll(`input[type="radio"][name="${CSS.escape(name)}"]`)
           : [el];
         const target = matchOption(group, value) || el;
         // Already correct? Nothing to do.
@@ -161,8 +164,23 @@
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg?.type !== "fillForm") return;
-    const results = (msg.fills || []).map(fillOne);
-    sendResponse({ results });
+    if (sender.id !== chrome.runtime.id) return;
+    const snapshot = window.__zesumeFieldSnapshot;
+    if (!snapshot || snapshot.id !== msg.snapshotId || snapshot.url !== location.href || msg.expectedUrl !== location.href
+        || Date.now() - snapshot.createdAt > 10 * 60_000 || !snapshot.root.isConnected
+        || !Array.isArray(msg.fills) || msg.fills.length > 80
+        || msg.fills.some(fill => {
+          const element = snapshot.fields.get(fill.selector);
+          return !element || document.querySelector(fill.selector) !== element || !snapshot.root.contains(element)
+            || !['string', 'boolean'].includes(typeof fill.value) || String(fill.value).length > 4000
+            || (element.form && new URL(element.form.action || location.href).origin !== location.origin);
+        })) {
+      sendResponse({ ok: false, error: 'Form changed or fill was not approved.' });
+      return false;
+    }
+    window.__zesumeFieldSnapshot = null;
+    const results = (msg.fills || []).map(fill => fillOne(fill, snapshot.root));
+    sendResponse({ ok: true, results });
     return true;
   });
 })();
